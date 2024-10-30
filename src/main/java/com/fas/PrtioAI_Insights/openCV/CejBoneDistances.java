@@ -52,7 +52,6 @@ public class CejBoneDistances {
             parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0701_01.ini");
             drawTeethMasks();
             drawAndMapCejMask();
-            drawTlaMask();
             drawAndMapBoneMask();
 
             // 작은 섬 제거 (면적이 900 이하인 컴포넌트)
@@ -352,56 +351,6 @@ public class CejBoneDistances {
             }
         }
     }
-
-    private static void drawTlaMask() {
-        double maxAllowedDistance = 150.0; // 폴리곤과의 최대 허용 거리 설정
-
-        for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
-            int toothNum = entry.getKey();
-            List<Point> toothPoints = null;
-
-            // 해당 치아 번호에 맞는 치아 폴리곤 좌표 찾기
-            for (int i = 0; i < teethNum.size(); i++) {
-                if (teethNum.get(i) == toothNum) {
-                    toothPoints = teethPoints.get(i);
-                    break;
-                }
-            }
-
-            // 치아 폴리곤이 없는 경우 건너뛰기
-            if (toothPoints == null) continue;
-
-            // 치아 폴리곤 생성
-            MatOfPoint2f toothPoly = new MatOfPoint2f();
-            toothPoly.fromArray(toothPoints.toArray(new Point[0]));
-
-            for (List<Point> tlaContour : entry.getValue()) {
-                List<Point> filteredTlaPoints = new ArrayList<>();
-
-                // 각 TLA 좌표에 대해 치아 폴리곤과의 거리 계산 후 필터링
-                for (Point tlaPoint : tlaContour) {
-                    double distance = Imgproc.pointPolygonTest(toothPoly, tlaPoint, true);
-                    if (Math.abs(distance) <= maxAllowedDistance) {
-                        filteredTlaPoints.add(tlaPoint);
-                    }
-                }
-
-                // 필터링된 좌표가 2개 이상일 때만 라인을 그리기
-                if (filteredTlaPoints.size() > 0) {
-                    MatOfPoint filteredPts = new MatOfPoint();
-                    filteredPts.fromList(filteredTlaPoints);
-                    Imgproc.polylines(tlaMask, List.of(filteredPts), true, new Scalar(0, 0, 255), 2);
-
-                    // 필터링된 TLA 좌표 출력
-                    System.out.println("치아 번호: " + toothNum + " - 필터링된 TLA 좌표: " + filteredTlaPoints);
-                }
-            }
-        }
-    }
-
-
-
-
 
     private static void removeIslands(Map<String, Mat> bimasks, int minArea) {
         for (Map.Entry<String, Mat> entry : bimasks.entrySet()) {
