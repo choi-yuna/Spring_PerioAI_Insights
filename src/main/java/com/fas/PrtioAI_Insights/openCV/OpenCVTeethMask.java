@@ -49,7 +49,7 @@ public class OpenCVTeethMask {
         initializeMasks();
 
         try {
-            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0701_01.ini");
+            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0765_01.ini");
             drawTeethMasks();
             drawAndMapCejMask();
             drawTlaMask();
@@ -223,16 +223,6 @@ public class OpenCVTeethMask {
         }
     }
 
-
-    private static void drawTlaMask() {
-        for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
-            for (List<Point> points : entry.getValue()) {
-                MatOfPoint pts = new MatOfPoint();
-                pts.fromList(points);
-                Imgproc.polylines(tlaMask, List.of(pts), true, new Scalar(0, 0, 255), 2);
-            }
-        }
-    }
     private static void drawAndMapBoneMask() {
         for (int i = 0; i < bonePoints.size(); i++) {
             List<Point> points = bonePoints.get(i);
@@ -240,6 +230,10 @@ public class OpenCVTeethMask {
 
             MatOfPoint pts = new MatOfPoint();
             pts.fromList(points);
+            int thickness = boneSize.get(i);
+
+            double area = Imgproc.contourArea(pts);
+            if (area < 300 || thickness > 2) continue;
 
             for (int j = 0; j < teethPoints.size(); j++) {
                 if (teethNum.get(j) < 11 || teethNum.get(j) > 48) continue;
@@ -254,20 +248,25 @@ public class OpenCVTeethMask {
                 int minY = toothBoundingBox.y - 50; // 여유값 추가
                 int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
 
-                for (Point bonePoint : points) {
-                    // Bounding Box와 Y 좌표 범위에 있는 점만 허용
-                    if (toothBoundingBox.contains(bonePoint) &&
-                            bonePoint.y >= minY && bonePoint.y <= maxY) {
 
-                        // 치아와 일정 거리 내의 좌표만 추가 (예: 50 픽셀 이내)
-                        double distance = Imgproc.pointPolygonTest(new MatOfPoint2f(toothPts.toArray()), bonePoint, true);
-                        if (distance >= -50 && distance <= 50) { // 거리 조건 설정
-                            int toothNum = teethNum.get(j);
-                            bonePointsByNum.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(bonePoint);
-                            Imgproc.circle(boneMappedOnlyMask, bonePoint, 2, new Scalar(255, 0, 0), -1);
-                        }
+                for (Point cejPoint : points) {
+                    if (toothBoundingBox.contains(cejPoint) &&
+                            cejPoint.y >= minY && cejPoint.y <= maxY) { // Y 좌표 필터링 조건 추가
+                        int toothNum = teethNum.get(j);
+                        bonePointsByNum.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(cejPoint);
+                        Imgproc.circle(boneMappedOnlyMask, cejPoint, 3, new Scalar(0, 255, 0), -1);
                     }
                 }
+            }
+        }
+    }
+
+    private static void drawTlaMask() {
+        for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
+            for (List<Point> points : entry.getValue()) {
+                MatOfPoint pts = new MatOfPoint();
+                pts.fromList(points);
+                Imgproc.polylines(tlaMask, List.of(pts), true, new Scalar(0, 0, 255), 2);
             }
         }
     }
@@ -279,18 +278,22 @@ public class OpenCVTeethMask {
         for (Map.Entry<String, Mat> entry : bimasks.entrySet()) {
             Mat bimask = entry.getValue();
 
+            // connectedComponentsWithStats를 사용하여 라벨링 및 컴포넌트 정보 추출
             Mat labels = new Mat();
             Mat stats = new Mat();
             Mat centroids = new Mat();
             int numLabels = Imgproc.connectedComponentsWithStats(bimask, labels, stats, centroids);
 
-            for (int i = 1; i < numLabels; i++) {
+            // 각 라벨에 대해 최소 면적(minArea) 이하인 작은 컴포넌트는 제거
+            for (int i = 1; i < numLabels; i++) { // 라벨 0은 배경이므로 제외
                 int area = (int) stats.get(i, Imgproc.CC_STAT_AREA)[0];
                 if (area <= minArea) {
+                    // 면적이 minArea 이하인 컴포넌트를 제거
                     Core.compare(labels, new Scalar(i), bimask, Core.CMP_NE);
                 }
             }
 
+            // 수정된 bimask를 맵에 다시 저장
             entry.setValue(bimask);
         }
     }
