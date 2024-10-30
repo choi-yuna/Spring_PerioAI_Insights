@@ -7,11 +7,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/cej-bone")
+@RequestMapping("/api")
 public class CejBoneDistancesController {
 
     private final CejBoneDistancesService cejBoneDistancesService;
@@ -22,19 +25,24 @@ public class CejBoneDistancesController {
     }
 
     /**
-     * INI 파일 업로드 및 데이터 파싱 후 전체 JSON 반환
+     * INI 파일을 임시 디렉토리에 저장하고 파싱 후 JSON 데이터 반환
      */
     @PostMapping("/upload-ini")
-    public ResponseEntity<Map<String, Object>> uploadIniFileAndGetData(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> uploadIniFileAndGetData(@RequestParam("file") MultipartFile file) {
         try {
-            String filepath = "path/to/save/" + file.getOriginalFilename();
-            file.transferTo(new java.io.File(filepath));
+            // 시스템 임시 디렉토리에 저장할 파일 경로 설정
+            String tempDir = System.getProperty("java.io.tmpdir");
+            Path filePath = Paths.get(tempDir, file.getOriginalFilename());
+            File tempFile = filePath.toFile();
 
-            // INI 파일 파싱
-            cejBoneDistancesService.parseIniFile(filepath);
+            // 파일 저장
+            file.transferTo(tempFile);
 
-            // 파싱된 데이터를 바탕으로 조정된 데이터 생성 및 JSON 반환
-            Map<String, Object> adjustedData = cejBoneDistancesService.calculateAdjustedCejBoneDistances();
+            // 저장된 파일 경로에서 INI 파일을 파싱
+            cejBoneDistancesService.parseIniFile(filePath.toString());
+
+            // 조정된 데이터 생성 및 JSON 반환
+            Map<Integer, Map<String, Object>> adjustedData = cejBoneDistancesService.calculateAdjustedCejBoneDistances();
             return ResponseEntity.ok(adjustedData);
 
         } catch (IOException e) {
