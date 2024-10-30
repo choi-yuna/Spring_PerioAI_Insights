@@ -49,7 +49,7 @@ public class OpenCVTeethMask {
         initializeMasks();
 
         try {
-            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0701_01.ini");
+            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0765_01.ini");
             drawTeethMasks();
             drawAndMapCejMask();
             drawTlaMask();
@@ -207,16 +207,16 @@ public class OpenCVTeethMask {
 
                 Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
 
-                // 특정 Y 좌표 범위에 있는 포인트만 허용 (예: Y 범위 필터링)
-                int minY = toothBoundingBox.y - 50; // 여유값 추가
+                int minY = toothBoundingBox.y - 50;
                 int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
 
                 for (Point cejPoint : points) {
                     if (toothBoundingBox.contains(cejPoint) &&
-                            cejPoint.y >= minY && cejPoint.y <= maxY) { // Y 좌표 필터링 조건 추가
+                            cejPoint.y >= minY && cejPoint.y <= maxY) {
                         int toothNum = teethNum.get(j);
-                        teethCejPoints.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(cejPoint);
-                        Imgproc.circle(cejMappedOnlyMask, cejPoint, 2, new Scalar(0, 255, 0), -1);
+                        Point normalizedPoint = normalizePoint(cejPoint, toothNum); // 호출 수정
+                        teethCejPoints.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(normalizedPoint);
+                        Imgproc.circle(cejMappedOnlyMask, normalizedPoint, 2, new Scalar(0, 255, 0), -1);
                     }
                 }
             }
@@ -244,17 +244,16 @@ public class OpenCVTeethMask {
 
                 Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
 
-                // Y 좌표 범위 필터링 설정 (치아와 연관된 영역만 허용)
-                int minY = toothBoundingBox.y - 50; // 여유값 추가
+                int minY = toothBoundingBox.y - 50;
                 int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
 
-
-                for (Point cejPoint : points) {
-                    if (toothBoundingBox.contains(cejPoint) &&
-                            cejPoint.y >= minY && cejPoint.y <= maxY) { // Y 좌표 필터링 조건 추가
+                for (Point bonePoint : points) {
+                    if (toothBoundingBox.contains(bonePoint) &&
+                            bonePoint.y >= minY && bonePoint.y <= maxY) {
                         int toothNum = teethNum.get(j);
-                        bonePointsByNum.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(cejPoint);
-                        Imgproc.circle(boneMappedOnlyMask, cejPoint, 3, new Scalar(0, 255, 0), -1);
+                        Point normalizedPoint = normalizePoint(bonePoint, toothNum); // 호출 수정
+                        bonePointsByNum.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(normalizedPoint);
+                        Imgproc.circle(boneMappedOnlyMask, normalizedPoint, 3, new Scalar(0, 255, 0), -1);
                     }
                 }
             }
@@ -307,8 +306,38 @@ public class OpenCVTeethMask {
         }
     }
 
+    private static Point normalizePoint(Point originalPoint, int toothNum) {
+        // y축 정규화: 원래 비율을 유지하며 0 ~ 2로 변환
+        double normalizedY = (originalPoint.y / 3000.0) * 2.0;
 
+        // x축 정규화: 상악과 하악의 치아 순서에 맞춰 0 ~ 48 범위로 비율 유지하며 변환
+        double normalizedX;
+        if (toothNum >= 11 && toothNum <= 28) { // 상악 치아 (11번 ~ 28번)
+            int[] maxillaryOrder = {18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28};
+            int index = findToothIndex(toothNum, maxillaryOrder);
+            double toothPosition = index / 15.0; // 0 ~ 1 사이 위치 비율
+            normalizedX = toothPosition * 48.0 + (originalPoint.x / 3000.0) * (48.0 / 15.0);
+        } else if (toothNum >= 31 && toothNum <= 48) { // 하악 치아 (31번 ~ 48번)
+            int[] mandibularOrder = {48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38};
+            int index = findToothIndex(toothNum, mandibularOrder);
+            double toothPosition = index / 15.0; // 0 ~ 1 사이 위치 비율
+            normalizedX = toothPosition * 48.0 + (originalPoint.x / 3000.0) * (48.0 / 15.0);
+        } else {
+            normalizedX = originalPoint.x; // 치아 번호가 범위 밖일 경우 원래 값 유지
+        }
 
+        return new Point(normalizedX, normalizedY);
+    }
+
+    // 주어진 치아 번호 배열에서 현재 치아 번호의 인덱스를 찾는 메서드
+    private static int findToothIndex(int toothNum, int[] toothOrder) {
+        for (int i = 0; i < toothOrder.length; i++) {
+            if (toothOrder[i] == toothNum) {
+                return i;
+            }
+        }
+        return -1; // 번호가 배열에 없을 경우 -1 반환
+    }
 
 
     private static void removeIslands(Map<String, Mat> bimasks, int minArea) {
