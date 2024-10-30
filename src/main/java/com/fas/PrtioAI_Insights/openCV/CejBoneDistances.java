@@ -10,7 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class OpenCVTeethMask {
+public class CejBoneDistances {
     // 데이터 초기화
     private static List<Integer> teethNum = new ArrayList<>();
     private static List<List<Point>> teethPoints = new ArrayList<>();
@@ -49,7 +49,7 @@ public class OpenCVTeethMask {
         initializeMasks();
 
         try {
-            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0765_01.ini");
+            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0701_01.ini");
             drawTeethMasks();
             drawAndMapCejMask();
             drawTlaMask();
@@ -67,13 +67,9 @@ public class OpenCVTeethMask {
             Imgcodecs.imwrite("cejMappedOnly.png", cejMappedOnlyMask);  // 매핑된 CEJ 좌표만 저장
             Imgcodecs.imwrite("boneMappedOnly.png", boneMappedOnlyMask);  // 매핑된 Bone 좌표만 저장
 
-            // 치아 번호별 CEJ 및 Bone 좌표 출력
-            for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
-                System.out.println("치아 번호: " + entry.getKey() + " - CEJ 좌표: " + entry.getValue());
-            }
-            for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
-                System.out.println("치아 번호: " + entry.getKey() + " - Bone 좌표: " + entry.getValue());
-            }
+            // 최소 Y 좌표와 CEJ 및 Bone 좌표 간의 거리와 바뀐 좌표 출력
+            calculateAndPrintAdjustedCejBoneDistances();
+
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -85,8 +81,8 @@ public class OpenCVTeethMask {
         mappedCejMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);
         tlaMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);
         boneMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);
-        cejMappedOnlyMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);  // 매핑된 CEJ만 저장할 마스크
-        boneMappedOnlyMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);  // 매핑된 Bone만 저장할 마스크
+        cejMappedOnlyMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);
+        boneMappedOnlyMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);
 
         // 각 치아 번호에 빈 마스크 초기화
         for (int i = 11; i <= 48; i++) {
@@ -141,7 +137,7 @@ public class OpenCVTeethMask {
             } else if (work.equals("S") && line.startsWith("CD")) {
                 type_ = "C";
             } else if (work.equals("S") && line.startsWith("BD")) {
-                type_ = "D"; // 치주골 데이터를 위한 타입
+                type_ = "D";
             } else if (work.equals("S") && line.startsWith("AD")) {
                 type_ = "A";
             } else if (work.equals("S") && line.startsWith("DD")) {
@@ -167,9 +163,70 @@ public class OpenCVTeethMask {
         br.close();
     }
 
-    private static void drawTeethMasks() {
+    private static void calculateAndPrintAdjustedCejBoneDistances() {
+        // 각 치아의 최소 Y 좌표 계산
+        Map<Integer, Double> minYByTooth = new HashMap<>();
+
         for (int i = 0; i < teethPoints.size(); i++) {
-            if (teethNum.get(i) < 11 || teethNum.get(i) > 48) continue;
+            int toothNum = teethNum.get(i);
+            List<Point> points = teethPoints.get(i);
+
+            for (Point p : points) {
+                if (!minYByTooth.containsKey(toothNum) || p.y < minYByTooth.get(toothNum)) {
+                    minYByTooth.put(toothNum, p.y);
+                }
+            }
+        }
+
+        // CEJ와 Bone 좌표 각각에 대해 최소 Y 좌표에 맞춘 새로운 좌표와의 거리 계산
+        for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
+            int toothNum = entry.getKey();
+            List<Point> cejList = entry.getValue();
+
+            if (minYByTooth.containsKey(toothNum)) {
+                double minY = minYByTooth.get(toothNum);
+
+                System.out.println("치아 번호: " + toothNum + " (CEJ와 최소 Y 기준)");
+                for (Point cejPoint : cejList) {
+                    double adjustedY = cejPoint.y - minY;
+                    Point adjustedCej = new Point(cejPoint.x, adjustedY);
+                    double distance = Math.abs(adjustedY);
+                    System.out.println("    CEJ 원본 좌표: " + cejPoint + " -> 조정된 좌표: " + adjustedCej + " - 최소 Y와의 거리: " + distance);
+                }
+            }
+        }
+
+        for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
+            int toothNum = entry.getKey();
+            List<Point> boneList = entry.getValue();
+
+            if (minYByTooth.containsKey(toothNum)) {
+                double minY = minYByTooth.get(toothNum);
+
+                System.out.println("치아 번호: " + toothNum + " (Bone과 최소 Y 기준)");
+                for (Point bonePoint : boneList) {
+                    double adjustedY = bonePoint.y - minY;
+                    Point adjustedBone = new Point(bonePoint.x, adjustedY);
+                    double distance = Math.abs(adjustedY);
+                    System.out.println("    Bone 원본 좌표: " + bonePoint + " -> 조정된 좌표: " + adjustedBone + " - 최소 Y와의 거리: " + distance);
+                }
+            }
+        }
+    }
+    private static void drawTeethMasks() {
+        Map<Integer, Double> minYByTooth = new HashMap<>();
+        Map<Integer, Double> maxYByTooth = new HashMap<>();
+        Map<Integer, Double> minXByTooth = new HashMap<>();
+        Map<Integer, Double> maxXByTooth = new HashMap<>();
+
+        Map<Integer, Point> minPointYByTooth = new HashMap<>();
+        Map<Integer, Point> maxPointYByTooth = new HashMap<>();
+        Map<Integer, Point> minPointXByTooth = new HashMap<>();
+        Map<Integer, Point> maxPointXByTooth = new HashMap<>();
+
+        for (int i = 0; i < teethPoints.size(); i++) {
+            int toothNum = teethNum.get(i);
+            if (toothNum < 11 || toothNum > 48) continue;
 
             List<Point> points = teethPoints.get(i);
             if (points.size() < 3) continue;
@@ -181,10 +238,45 @@ public class OpenCVTeethMask {
             double area = Imgproc.contourArea(pts);
             if (area < 500) continue;
 
+            // Teeth 폴리곤 그리기
             Imgproc.polylines(combinedMask, List.of(pts), true, new Scalar(255, 255, 255), thickness);
             Imgproc.fillPoly(combinedMask, List.of(pts), new Scalar(255, 255, 255));
+
+            // 각 폴리곤 내의 최소 및 최대 x, y 좌표 찾기
+            for (Point p : points) {
+                // 최소 y값 갱신
+                if (!minYByTooth.containsKey(toothNum) || p.y < minYByTooth.get(toothNum)) {
+                    minYByTooth.put(toothNum, p.y);
+                    minPointYByTooth.put(toothNum, p);
+                }
+                // 최대 y값 갱신
+                if (!maxYByTooth.containsKey(toothNum) || p.y > maxYByTooth.get(toothNum)) {
+                    maxYByTooth.put(toothNum, p.y);
+                    maxPointYByTooth.put(toothNum, p);
+                }
+                // 최소 x값 갱신
+                if (!minXByTooth.containsKey(toothNum) || p.x < minXByTooth.get(toothNum)) {
+                    minXByTooth.put(toothNum, p.x);
+                    minPointXByTooth.put(toothNum, p);
+                }
+                // 최대 x값 갱신
+                if (!maxXByTooth.containsKey(toothNum) || p.x > maxXByTooth.get(toothNum)) {
+                    maxXByTooth.put(toothNum, p.x);
+                    maxPointXByTooth.put(toothNum, p);
+                }
+            }
+        }
+
+        // 치아 번호별 최대 및 최소 x, y 좌표 출력
+        for (int toothNum : minYByTooth.keySet()) {
+            System.out.println("치아 번호: " + toothNum +
+                    " - 최소 y 좌표: " + minPointYByTooth.get(toothNum) +
+                    ", 최대 y 좌표: " + maxPointYByTooth.get(toothNum) +
+                    ", 최소 x 좌표: " + minPointXByTooth.get(toothNum) +
+                    ", 최대 x 좌표: " + maxPointXByTooth.get(toothNum));
         }
     }
+
 
     private static void drawAndMapCejMask() {
         for (int i = 0; i < cejPoints.size(); i++) {
@@ -207,16 +299,16 @@ public class OpenCVTeethMask {
 
                 Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
 
-                int minY = toothBoundingBox.y - 50;
+                // 특정 Y 좌표 범위에 있는 포인트만 허용 (예: Y 범위 필터링)
+                int minY = toothBoundingBox.y - 50; // 여유값 추가
                 int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
 
                 for (Point cejPoint : points) {
                     if (toothBoundingBox.contains(cejPoint) &&
-                            cejPoint.y >= minY && cejPoint.y <= maxY) {
+                            cejPoint.y >= minY && cejPoint.y <= maxY) { // Y 좌표 필터링 조건 추가
                         int toothNum = teethNum.get(j);
-                        Point normalizedPoint = normalizePoint(cejPoint, toothNum); // 호출 수정
-                        teethCejPoints.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(normalizedPoint);
-                        Imgproc.circle(cejMappedOnlyMask, normalizedPoint, 2, new Scalar(0, 255, 0), -1);
+                        teethCejPoints.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(cejPoint);
+                        Imgproc.circle(cejMappedOnlyMask, cejPoint, 2, new Scalar(0, 255, 0), -1);
                     }
                 }
             }
@@ -244,16 +336,17 @@ public class OpenCVTeethMask {
 
                 Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
 
-                int minY = toothBoundingBox.y - 50;
+                // Y 좌표 범위 필터링 설정 (치아와 연관된 영역만 허용)
+                int minY = toothBoundingBox.y - 50; // 여유값 추가
                 int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
 
-                for (Point bonePoint : points) {
-                    if (toothBoundingBox.contains(bonePoint) &&
-                            bonePoint.y >= minY && bonePoint.y <= maxY) {
+
+                for (Point cejPoint : points) {
+                    if (toothBoundingBox.contains(cejPoint) &&
+                            cejPoint.y >= minY && cejPoint.y <= maxY) { // Y 좌표 필터링 조건 추가
                         int toothNum = teethNum.get(j);
-                        Point normalizedPoint = normalizePoint(bonePoint, toothNum); // 호출 수정
-                        bonePointsByNum.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(normalizedPoint);
-                        Imgproc.circle(boneMappedOnlyMask, normalizedPoint, 3, new Scalar(0, 255, 0), -1);
+                        bonePointsByNum.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(cejPoint);
+                        Imgproc.circle(boneMappedOnlyMask, cejPoint, 3, new Scalar(0, 255, 0), -1);
                     }
                 }
             }
@@ -306,38 +399,8 @@ public class OpenCVTeethMask {
         }
     }
 
-    private static Point normalizePoint(Point originalPoint, int toothNum) {
-        // y축 정규화: 원래 비율을 유지하며 0 ~ 2로 변환
-        double normalizedY = (originalPoint.y / 3000.0) * 2.0;
 
-        // x축 정규화: 상악과 하악의 치아 순서에 맞춰 0 ~ 48 범위로 비율 유지하며 변환
-        double normalizedX;
-        if (toothNum >= 11 && toothNum <= 28) { // 상악 치아 (11번 ~ 28번)
-            int[] maxillaryOrder = {18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28};
-            int index = findToothIndex(toothNum, maxillaryOrder);
-            double toothPosition = index / 15.0; // 0 ~ 1 사이 위치 비율
-            normalizedX = toothPosition * 48.0 + (originalPoint.x / 3000.0) * (48.0 / 15.0);
-        } else if (toothNum >= 31 && toothNum <= 48) { // 하악 치아 (31번 ~ 48번)
-            int[] mandibularOrder = {48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38};
-            int index = findToothIndex(toothNum, mandibularOrder);
-            double toothPosition = index / 15.0; // 0 ~ 1 사이 위치 비율
-            normalizedX = toothPosition * 48.0 + (originalPoint.x / 3000.0) * (48.0 / 15.0);
-        } else {
-            normalizedX = originalPoint.x; // 치아 번호가 범위 밖일 경우 원래 값 유지
-        }
 
-        return new Point(normalizedX, normalizedY);
-    }
-
-    // 주어진 치아 번호 배열에서 현재 치아 번호의 인덱스를 찾는 메서드
-    private static int findToothIndex(int toothNum, int[] toothOrder) {
-        for (int i = 0; i < toothOrder.length; i++) {
-            if (toothOrder[i] == toothNum) {
-                return i;
-            }
-        }
-        return -1; // 번호가 배열에 없을 경우 -1 반환
-    }
 
 
     private static void removeIslands(Map<String, Mat> bimasks, int minArea) {
