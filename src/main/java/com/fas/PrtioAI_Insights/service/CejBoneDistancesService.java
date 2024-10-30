@@ -11,39 +11,47 @@ import java.util.*;
 @Service
 public class CejBoneDistancesService {
 
-    // 데이터 초기화
-    private List<Integer> teethNum = new ArrayList<>();
-    private List<List<Point>> teethPoints = new ArrayList<>();
-    private List<Integer> teethSize = new ArrayList<>();
-    private List<List<Point>> cejPoints = new ArrayList<>();
-    private List<Scalar> cejColor = new ArrayList<>();
-    private List<Integer> cejSize = new ArrayList<>();
+    private List<Integer> teethNum;
+    private List<List<Point>> teethPoints;
+    private List<Integer> teethSize;
+    private List<List<Point>> cejPoints;
+    private List<Scalar> cejColor;
+    private List<Integer> cejSize;
+    private List<List<Point>> tlaPoints;
+    private List<Scalar> tlaColor;
+    private List<Integer> tlaSize;
+    private List<List<Point>> bonePoints;
+    private List<Scalar> boneColor;
+    private List<Integer> boneSize;
 
-    // 추가 데이터 초기화
-    private List<List<Point>> tlaPoints = new ArrayList<>();
-    private List<Scalar> tlaColor = new ArrayList<>();
-    private List<Integer> tlaSize = new ArrayList<>();
-    private List<List<Point>> bonePoints = new ArrayList<>();
-    private List<Scalar> boneColor = new ArrayList<>();
-    private List<Integer> boneSize = new ArrayList<>();
+    private Map<Integer, List<Point>> teethCejPoints;
+    private Map<Integer, List<List<Point>>> tlaPointsByNum;
+    private Map<Integer, List<Point>> bonePointsByNum;
+    private Map<String, Mat> bimasks;
 
-    // 치아 번호별 매핑
-    private Map<Integer, List<Point>> teethCejPoints = new HashMap<>();
-    private Map<Integer, List<List<Point>>> tlaPointsByNum = new HashMap<>();
-    private Map<Integer, List<Point>> bonePointsByNum = new HashMap<>();
-    private Map<String, Mat> bimasks = new HashMap<>();  // 각 치아 번호에 대한 마스크
-
-    // 마스크
-    private Mat combinedMask;
-    private Mat cejMask;
-    private Mat mappedCejMask;
-    private Mat tlaMask;
-    private Mat boneMask;
-    private Mat cejMappedOnlyMask;
-    private Mat boneMappedOnlyMask;
+    private Mat combinedMask, cejMask, mappedCejMask, tlaMask, boneMask, cejMappedOnlyMask, boneMappedOnlyMask;
 
     public CejBoneDistancesService() {
         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+    }
+
+    private void initialize() {
+        teethNum = new ArrayList<>();
+        teethPoints = new ArrayList<>();
+        teethSize = new ArrayList<>();
+        cejPoints = new ArrayList<>();
+        cejColor = new ArrayList<>();
+        cejSize = new ArrayList<>();
+        tlaPoints = new ArrayList<>();
+        tlaColor = new ArrayList<>();
+        tlaSize = new ArrayList<>();
+        bonePoints = new ArrayList<>();
+        boneColor = new ArrayList<>();
+        boneSize = new ArrayList<>();
+        teethCejPoints = new HashMap<>();
+        tlaPointsByNum = new HashMap<>();
+        bonePointsByNum = new HashMap<>();
+        bimasks = new HashMap<>();
         initializeMasks();
     }
 
@@ -56,15 +64,25 @@ public class CejBoneDistancesService {
         cejMappedOnlyMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);
         boneMappedOnlyMask = Mat.zeros(3000, 3000, CvType.CV_8UC3);
 
-        // 각 치아 번호에 빈 마스크 초기화
         for (int i = 11; i <= 48; i++) {
             bimasks.put(String.valueOf(i), Mat.zeros(3000, 3000, CvType.CV_8UC1));
         }
     }
 
-    public void parseIniFile(String filepath) throws IOException {
+    public void saveMasks() {
+        Imgcodecs.imwrite("Combined_Teeth_Mask.png", combinedMask);
+        Imgcodecs.imwrite("cejMask.png", cejMask);
+        Imgcodecs.imwrite("mappedCejMask.png", mappedCejMask);
+        Imgcodecs.imwrite("tlaMask.png", tlaMask);
+        Imgcodecs.imwrite("boneMask.png", boneMask);
+        Imgcodecs.imwrite("cejMappedOnly.png", cejMappedOnlyMask);
+        Imgcodecs.imwrite("boneMappedOnly.png", boneMappedOnlyMask);
+    }
+
+    public Map<String, Object> parseIniFile(String filepath) throws IOException {
+        initialize();
         BufferedReader br = new BufferedReader(new FileReader(filepath));
-        System.out.println("Parsing INI file: " + filepath);
+
         String line;
         List<Point> loadedPoints = new ArrayList<>();
         List<Integer> loadedColor = new ArrayList<>();
@@ -132,30 +150,34 @@ public class CejBoneDistancesService {
             }
         }
         br.close();
-
-        // CEJ와 Bone 데이터 매핑
+        saveMasks();
         drawAndMapCejMask();
         drawAndMapBoneMask();
 
-        // 분석 데이터 반환
-        Map<String, Object> analysisData = getAnalysisData();
+        return getAnalysisData();
     }
 
     public Map<Integer, Map<String, Object>> calculateAdjustedCejBoneDistances() {
         Map<Integer, Map<String, Object>> result = new HashMap<>();
-        Map<Integer, Double> minYByTooth = new HashMap<>();
 
-        // 각 치아의 최소 Y 좌표 계산
+        Set<Integer> maxillaryTeeth = Set.of(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28);
+        Set<Integer> mandibularTeeth = Set.of(31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48);
+
+        Map<Integer, Double> yReferenceByTooth = new HashMap<>();
+
         for (int i = 0; i < teethPoints.size(); i++) {
             int toothNum = teethNum.get(i);
             List<Point> points = teethPoints.get(i);
 
             for (Point p : points) {
-                minYByTooth.put(toothNum, Math.min(minYByTooth.getOrDefault(toothNum, Double.MAX_VALUE), p.y));
+                if (maxillaryTeeth.contains(toothNum)) {
+                    yReferenceByTooth.put(toothNum, Math.min(yReferenceByTooth.getOrDefault(toothNum, Double.MAX_VALUE), p.y));
+                } else if (mandibularTeeth.contains(toothNum)) {
+                    yReferenceByTooth.put(toothNum, Math.max(yReferenceByTooth.getOrDefault(toothNum, Double.MIN_VALUE), p.y));
+                }
             }
         }
 
-        // CEJ 데이터 저장
         for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> cejList = entry.getValue();
@@ -164,22 +186,21 @@ public class CejBoneDistancesService {
             List<Map<String, Double>> adjustedCejPoints = new ArrayList<>();
             List<Double> cejDistances = new ArrayList<>();
 
-            if (minYByTooth.containsKey(toothNum)) {
-                double minY = minYByTooth.get(toothNum);
+            if (yReferenceByTooth.containsKey(toothNum)) {
+                double yReference = yReferenceByTooth.get(toothNum);
 
                 for (Point cejPoint : cejList) {
-                    double adjustedY = cejPoint.y - minY;
+                    double adjustedY = maxillaryTeeth.contains(toothNum) ? cejPoint.y - yReference : yReference - cejPoint.y;
                     adjustedCejPoints.add(Map.of("x", cejPoint.x, "y", adjustedY));
                     cejDistances.add(Math.abs(adjustedY));
                 }
             }
 
-            toothData.put("cejPoints", cejList);  // 원본 CEJ 좌표
-            toothData.put("adjustedCejPoints", adjustedCejPoints);  // 조정된 CEJ 좌표
-            toothData.put("cejDistances", cejDistances);  // CEJ 거리
+            toothData.put("cejPoints", cejList);
+            toothData.put("adjustedCejPoints", adjustedCejPoints);
+            toothData.put("cejDistances", cejDistances);
         }
 
-        // Bone 데이터 저장
         for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> boneList = entry.getValue();
@@ -188,79 +209,22 @@ public class CejBoneDistancesService {
             List<Map<String, Double>> adjustedBonePoints = new ArrayList<>();
             List<Double> boneDistances = new ArrayList<>();
 
-            if (minYByTooth.containsKey(toothNum)) {
-                double minY = minYByTooth.get(toothNum);
+            if (yReferenceByTooth.containsKey(toothNum)) {
+                double yReference = yReferenceByTooth.get(toothNum);
 
                 for (Point bonePoint : boneList) {
-                    double adjustedY = bonePoint.y - minY;
+                    double adjustedY = maxillaryTeeth.contains(toothNum) ? bonePoint.y - yReference : yReference - bonePoint.y;
                     adjustedBonePoints.add(Map.of("x", bonePoint.x, "y", adjustedY));
                     boneDistances.add(Math.abs(adjustedY));
                 }
             }
 
-            toothData.put("bonePoints", boneList);  // 원본 Bone 좌표
-            toothData.put("adjustedBonePoints", adjustedBonePoints);  // 조정된 Bone 좌표
-            toothData.put("boneDistances", boneDistances);  // Bone 거리
+            toothData.put("bonePoints", boneList);
+            toothData.put("adjustedBonePoints", adjustedBonePoints);
+            toothData.put("boneDistances", boneDistances);
         }
 
         return result;
-    }
-
-    public void drawTeethMasks() {
-        Map<Integer, Double> minYByTooth = new HashMap<>();
-        Map<Integer, Double> maxYByTooth = new HashMap<>();
-        Map<Integer, Double> minXByTooth = new HashMap<>();
-        Map<Integer, Double> maxXByTooth = new HashMap<>();
-
-        Map<Integer, Point> minPointYByTooth = new HashMap<>();
-        Map<Integer, Point> maxPointYByTooth = new HashMap<>();
-        Map<Integer, Point> minPointXByTooth = new HashMap<>();
-        Map<Integer, Point> maxPointXByTooth = new HashMap<>();
-
-        for (int i = 0; i < teethPoints.size(); i++) {
-            int toothNum = teethNum.get(i);
-            if (toothNum < 11 || toothNum > 48) continue;
-
-            List<Point> points = teethPoints.get(i);
-            if (points.size() < 3) continue;
-
-            MatOfPoint pts = new MatOfPoint();
-            pts.fromList(points);
-            int thickness = teethSize.get(i);
-
-            double area = Imgproc.contourArea(pts);
-            if (area < 500) continue;
-
-            Imgproc.polylines(combinedMask, List.of(pts), true, new Scalar(255, 255, 255), thickness);
-            Imgproc.fillPoly(combinedMask, List.of(pts), new Scalar(255, 255, 255));
-
-            for (Point p : points) {
-                if (!minYByTooth.containsKey(toothNum) || p.y < minYByTooth.get(toothNum)) {
-                    minYByTooth.put(toothNum, p.y);
-                    minPointYByTooth.put(toothNum, p);
-                }
-                if (!maxYByTooth.containsKey(toothNum) || p.y > maxYByTooth.get(toothNum)) {
-                    maxYByTooth.put(toothNum, p.y);
-                    maxPointYByTooth.put(toothNum, p);
-                }
-                if (!minXByTooth.containsKey(toothNum) || p.x < minXByTooth.get(toothNum)) {
-                    minXByTooth.put(toothNum, p.x);
-                    minPointXByTooth.put(toothNum, p);
-                }
-                if (!maxXByTooth.containsKey(toothNum) || p.x > maxXByTooth.get(toothNum)) {
-                    maxXByTooth.put(toothNum, p.x);
-                    maxPointXByTooth.put(toothNum, p);
-                }
-            }
-        }
-
-        for (int toothNum : minYByTooth.keySet()) {
-            System.out.println("치아 번호: " + toothNum +
-                    " - 최소 y 좌표: " + minPointYByTooth.get(toothNum) +
-                    ", 최대 y 좌표: " + maxPointYByTooth.get(toothNum) +
-                    ", 최소 x 좌표: " + minPointXByTooth.get(toothNum) +
-                    ", 최대 x 좌표: " + maxPointXByTooth.get(toothNum));
-        }
     }
 
     private void drawAndMapCejMask() {
@@ -283,14 +247,12 @@ public class CejBoneDistancesService {
                 toothPts.fromList(toothPoints);
 
                 Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
-
-                // 특정 Y 좌표 범위에 있는 포인트만 허용 (예: Y 범위 필터링)
-                int minY = toothBoundingBox.y - 50; // 여유값 추가
+                int minY = toothBoundingBox.y - 50;
                 int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
 
                 for (Point cejPoint : points) {
                     if (toothBoundingBox.contains(cejPoint) &&
-                            cejPoint.y >= minY && cejPoint.y <= maxY) { // Y 좌표 필터링 조건 추가
+                            cejPoint.y >= minY && cejPoint.y <= maxY) {
                         int toothNum = teethNum.get(j);
                         teethCejPoints.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(cejPoint);
                         Imgproc.circle(cejMappedOnlyMask, cejPoint, 2, new Scalar(0, 255, 0), -1);
@@ -320,14 +282,12 @@ public class CejBoneDistancesService {
                 toothPts.fromList(toothPoints);
 
                 Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
-
-                // Y 좌표 범위 필터링 설정 (치아와 연관된 영역만 허용)
-                int minY = toothBoundingBox.y - 50; // 여유값 추가
+                int minY = toothBoundingBox.y - 50;
                 int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
 
                 for (Point cejPoint : points) {
                     if (toothBoundingBox.contains(cejPoint) &&
-                            cejPoint.y >= minY && cejPoint.y <= maxY) { // Y 좌표 필터링 조건 추가
+                            cejPoint.y >= minY && cejPoint.y <= maxY) {
                         int toothNum = teethNum.get(j);
                         bonePointsByNum.computeIfAbsent(toothNum, k -> new ArrayList<>()).add(cejPoint);
                         Imgproc.circle(boneMappedOnlyMask, cejPoint, 3, new Scalar(0, 255, 0), -1);
@@ -335,35 +295,6 @@ public class CejBoneDistancesService {
                 }
             }
         }
-    }
-
-    public void removeIslands(int minArea) {
-        for (Map.Entry<String, Mat> entry : bimasks.entrySet()) {
-            Mat bimask = entry.getValue();
-
-            Mat labels = new Mat();
-            Mat stats = new Mat();
-            Mat centroids = new Mat();
-            int numLabels = Imgproc.connectedComponentsWithStats(bimask, labels, stats, centroids);
-
-            for (int i = 1; i < numLabels; i++) {
-                int area = (int) stats.get(i, Imgproc.CC_STAT_AREA)[0];
-                if (area <= minArea) {
-                    Core.compare(labels, new Scalar(i), bimask, Core.CMP_NE);
-                }
-            }
-            entry.setValue(bimask);
-        }
-    }
-
-    public void saveMasks() {
-        Imgcodecs.imwrite("Combined_Teeth_Mask.png", combinedMask);
-        Imgcodecs.imwrite("cejMask.png", cejMask);
-        Imgcodecs.imwrite("mappedCejMask.png", mappedCejMask);
-        Imgcodecs.imwrite("tlaMask.png", tlaMask);
-        Imgcodecs.imwrite("boneMask.png", boneMask);
-        Imgcodecs.imwrite("cejMappedOnly.png", cejMappedOnlyMask);
-        Imgcodecs.imwrite("boneMappedOnly.png", boneMappedOnlyMask);
     }
 
     public Map<String, Object> getAnalysisData() {
