@@ -49,7 +49,7 @@ public class CejBoneDistances {
         initializeMasks();
 
         try {
-            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0701_01.ini");
+            parseIniFile("C:/Users/wlsdn/Downloads/BRM 701~800/Labelling/draw/A_7_0713_01.ini");
             drawTeethMasks();
             drawAndMapCejMask();
             drawAndMapBoneMask();
