@@ -5,10 +5,7 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.imgcodecs.Imgcodecs;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class CejBoneDistances {
     // 데이터 초기화
@@ -49,7 +46,7 @@ public class CejBoneDistances {
         initializeMasks();
 
         try {
-            parseIniFile("C:/Users/wlsdn/Downloads/BRM 701~800/Labelling/draw/A_7_0713_01.ini");
+            parseIniFile("C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/Labelling/draw/A_7_0713_01.ini");
             drawTeethMasks();
             drawAndMapCejMask();
             drawAndMapBoneMask();
@@ -163,34 +160,42 @@ public class CejBoneDistances {
     }
 
     private static void calculateAndPrintAdjustedCejBoneDistances() {
-        // 각 치아의 최소 Y 좌표 계산
-        Map<Integer, Double> minYByTooth = new HashMap<>();
+        // 상악 치아와 하악 치아 번호 구분
+        Set<Integer> maxillaryTeeth = Set.of(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28);
+        Set<Integer> mandibularTeeth = Set.of(31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48);
+
+        // 각 치아의 기준 Y 좌표 계산 (상악: 최대 Y, 하악: 최소 Y)
+        Map<Integer, Double> yReferenceByTooth = new HashMap<>();
 
         for (int i = 0; i < teethPoints.size(); i++) {
             int toothNum = teethNum.get(i);
             List<Point> points = teethPoints.get(i);
 
             for (Point p : points) {
-                if (!minYByTooth.containsKey(toothNum) || p.y < minYByTooth.get(toothNum)) {
-                    minYByTooth.put(toothNum, p.y);
+                if (maxillaryTeeth.contains(toothNum)) {
+                    // 상악 치아의 경우 최대 y 값을 기준으로 설정
+                    yReferenceByTooth.put(toothNum, Math.max(yReferenceByTooth.getOrDefault(toothNum, Double.MIN_VALUE), p.y));
+                } else if (mandibularTeeth.contains(toothNum)) {
+                    // 하악 치아의 경우 최소 y 값을 기준으로 설정
+                    yReferenceByTooth.put(toothNum, Math.min(yReferenceByTooth.getOrDefault(toothNum, Double.MAX_VALUE), p.y));
                 }
             }
         }
 
-        // CEJ와 Bone 좌표 각각에 대해 최소 Y 좌표에 맞춘 새로운 좌표와의 거리 계산
+        // CEJ와 Bone 좌표 각각에 대해 기준 Y 좌표에 맞춘 새로운 좌표와의 거리 계산
         for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> cejList = entry.getValue();
 
-            if (minYByTooth.containsKey(toothNum)) {
-                double minY = minYByTooth.get(toothNum);
+            if (yReferenceByTooth.containsKey(toothNum)) {
+                double yReference = yReferenceByTooth.get(toothNum);
 
-                System.out.println("치아 번호: " + toothNum + " (CEJ와 최소 Y 기준)");
+                System.out.println("치아 번호: " + toothNum + " (CEJ와 기준 Y 좌표)");
                 for (Point cejPoint : cejList) {
-                    double adjustedY = cejPoint.y - minY;
+                    double adjustedY = maxillaryTeeth.contains(toothNum) ? yReference - cejPoint.y : cejPoint.y - yReference;
                     Point adjustedCej = new Point(cejPoint.x, adjustedY);
                     double distance = Math.abs(adjustedY);
-                    System.out.println("    CEJ 원본 좌표: " + cejPoint + " -> 조정된 좌표: " + adjustedCej + " - 최소 Y와의 거리: " + distance);
+                    System.out.println("    CEJ 원본 좌표: " + cejPoint + " -> 조정된 좌표: " + adjustedCej + " - 기준 Y와의 거리: " + distance);
                 }
             }
         }
@@ -199,19 +204,20 @@ public class CejBoneDistances {
             int toothNum = entry.getKey();
             List<Point> boneList = entry.getValue();
 
-            if (minYByTooth.containsKey(toothNum)) {
-                double minY = minYByTooth.get(toothNum);
+            if (yReferenceByTooth.containsKey(toothNum)) {
+                double yReference = yReferenceByTooth.get(toothNum);
 
-                System.out.println("치아 번호: " + toothNum + " (Bone과 최소 Y 기준)");
+                System.out.println("치아 번호: " + toothNum + " (Bone과 기준 Y 좌표)");
                 for (Point bonePoint : boneList) {
-                    double adjustedY = bonePoint.y - minY;
+                    double adjustedY = maxillaryTeeth.contains(toothNum) ? yReference - bonePoint.y : bonePoint.y - yReference;
                     Point adjustedBone = new Point(bonePoint.x, adjustedY);
                     double distance = Math.abs(adjustedY);
-                    System.out.println("    Bone 원본 좌표: " + bonePoint + " -> 조정된 좌표: " + adjustedBone + " - 최소 Y와의 거리: " + distance);
+                    System.out.println("    Bone 원본 좌표: " + bonePoint + " -> 조정된 좌표: " + adjustedBone + " - 기준 Y와의 거리: " + distance);
                 }
             }
         }
     }
+
     private static void drawTeethMasks() {
         Map<Integer, Double> minYByTooth = new HashMap<>();
         Map<Integer, Double> maxYByTooth = new HashMap<>();

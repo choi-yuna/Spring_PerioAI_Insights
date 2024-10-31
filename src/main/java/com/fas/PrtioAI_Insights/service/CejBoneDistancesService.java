@@ -160,9 +160,11 @@ public class CejBoneDistancesService {
     public Map<Integer, Map<String, Object>> calculateAdjustedCejBoneDistances() {
         Map<Integer, Map<String, Object>> result = new HashMap<>();
 
+        // 상악 치아와 하악 치아 구분
         Set<Integer> maxillaryTeeth = Set.of(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28);
         Set<Integer> mandibularTeeth = Set.of(31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48);
 
+        // 각 치아의 기준 Y 좌표 계산 (상악: 최대 Y, 하악: 최소 Y)
         Map<Integer, Double> yReferenceByTooth = new HashMap<>();
 
         for (int i = 0; i < teethPoints.size(); i++) {
@@ -171,13 +173,16 @@ public class CejBoneDistancesService {
 
             for (Point p : points) {
                 if (maxillaryTeeth.contains(toothNum)) {
-                    yReferenceByTooth.put(toothNum, Math.min(yReferenceByTooth.getOrDefault(toothNum, Double.MAX_VALUE), p.y));
-                } else if (mandibularTeeth.contains(toothNum)) {
+                    // 상악 치아의 경우 최대 y 값을 기준으로 설정
                     yReferenceByTooth.put(toothNum, Math.max(yReferenceByTooth.getOrDefault(toothNum, Double.MIN_VALUE), p.y));
+                } else if (mandibularTeeth.contains(toothNum)) {
+                    // 하악 치아의 경우 최소 y 값을 기준으로 설정
+                    yReferenceByTooth.put(toothNum, Math.min(yReferenceByTooth.getOrDefault(toothNum, Double.MAX_VALUE), p.y));
                 }
             }
         }
 
+        // CEJ 조정 및 거리 계산
         for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> cejList = entry.getValue();
@@ -190,7 +195,8 @@ public class CejBoneDistancesService {
                 double yReference = yReferenceByTooth.get(toothNum);
 
                 for (Point cejPoint : cejList) {
-                    double adjustedY = maxillaryTeeth.contains(toothNum) ? cejPoint.y - yReference : yReference - cejPoint.y;
+                    // 상악 치아는 최대 Y를 기준으로, 하악 치아는 최소 Y를 기준으로 조정
+                    double adjustedY = maxillaryTeeth.contains(toothNum) ? yReference - cejPoint.y : cejPoint.y - yReference;
                     adjustedCejPoints.add(Map.of("x", cejPoint.x, "y", adjustedY));
                     cejDistances.add(Math.abs(adjustedY));
                 }
@@ -201,6 +207,7 @@ public class CejBoneDistancesService {
             toothData.put("cejDistances", cejDistances);
         }
 
+        // Bone 조정 및 거리 계산
         for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> boneList = entry.getValue();
@@ -213,7 +220,8 @@ public class CejBoneDistancesService {
                 double yReference = yReferenceByTooth.get(toothNum);
 
                 for (Point bonePoint : boneList) {
-                    double adjustedY = maxillaryTeeth.contains(toothNum) ? bonePoint.y - yReference : yReference - bonePoint.y;
+                    // 상악 치아는 최대 Y를 기준으로, 하악 치아는 최소 Y를 기준으로 조정
+                    double adjustedY = maxillaryTeeth.contains(toothNum) ? yReference - bonePoint.y : bonePoint.y - yReference;
                     adjustedBonePoints.add(Map.of("x", bonePoint.x, "y", adjustedY));
                     boneDistances.add(Math.abs(adjustedY));
                 }
