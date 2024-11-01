@@ -268,54 +268,60 @@ public class CejBoneDistancesService {
         Map<Integer, Map<String, Object>> result = new HashMap<>();
         Set<Integer> maxillaryTeeth = Set.of(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28);
 
-        for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
-            int toothNum = entry.getKey();
-            if (!healthyTeeth.contains(toothNum)) continue;
+        for (int toothNum = 11; toothNum <= 48; toothNum++) {
+            Map<String, Object> toothData = new HashMap<>();
 
-            List<Point> cejList = entry.getValue();
-            Map<String, Object> toothData = result.computeIfAbsent(toothNum, k -> new HashMap<>());
-            List<Map<String, Double>> adjustedCejPoints = new ArrayList<>();
-            List<Double> cejDistances = new ArrayList<>();
+            // 정상 치아 번호라면 좌표 계산
+            if (healthyTeeth.contains(toothNum)) {
+                List<Point> cejList = teethCejPoints.getOrDefault(toothNum, Collections.emptyList());
+                List<Map<String, Double>> adjustedCejPoints = new ArrayList<>();
+                List<Double> cejDistances = new ArrayList<>();
 
-            if (yReferenceByTooth.containsKey(toothNum)) {
-                double yReference = yReferenceByTooth.get(toothNum);
-                boolean isMaxillary = maxillaryTeeth.contains(toothNum);
+                if (yReferenceByTooth.containsKey(toothNum)) {
+                    double yReference = yReferenceByTooth.get(toothNum);
+                    boolean isMaxillary = maxillaryTeeth.contains(toothNum);
 
-                for (Point cejPoint : cejList) {
-                    double adjustedY = isMaxillary ? yReference - cejPoint.y : cejPoint.y - yReference;
-                    adjustedCejPoints.add(Map.of("x", cejPoint.x, "y", adjustedY));
-                    cejDistances.add(Math.abs(adjustedY));
+                    for (Point cejPoint : cejList) {
+                        double adjustedY = isMaxillary ? yReference - cejPoint.y : cejPoint.y - yReference;
+                        adjustedCejPoints.add(Map.of("x", cejPoint.x, "y", adjustedY));
+                        cejDistances.add(Math.abs(adjustedY));
+                    }
                 }
+
+                toothData.put("cejPoints", cejList);
+                toothData.put("adjustedCejPoints", adjustedCejPoints);
+                toothData.put("cejDistances", cejDistances);
+
+                List<Point> boneList = bonePointsByNum.getOrDefault(toothNum, Collections.emptyList());
+                List<Map<String, Double>> adjustedBonePoints = new ArrayList<>();
+                List<Double> boneDistances = new ArrayList<>();
+
+                if (yReferenceByTooth.containsKey(toothNum)) {
+                    double yReference = yReferenceByTooth.get(toothNum);
+                    boolean isMaxillary = maxillaryTeeth.contains(toothNum);
+
+                    for (Point bonePoint : boneList) {
+                        double adjustedY = isMaxillary ? yReference - bonePoint.y : bonePoint.y - yReference;
+                        adjustedBonePoints.add(Map.of("x", bonePoint.x, "y", adjustedY));
+                        boneDistances.add(Math.abs(adjustedY));
+                    }
+                }
+
+                toothData.put("bonePoints", boneList);
+                toothData.put("adjustedBonePoints", adjustedBonePoints);
+                toothData.put("boneDistances", boneDistances);
+
+            } else {
+                // 비정상 치아 번호는 값을 null로 설정
+                toothData.put("cejPoints", null);
+                toothData.put("adjustedCejPoints", null);
+                toothData.put("cejDistances", null);
+                toothData.put("bonePoints", null);
+                toothData.put("adjustedBonePoints", null);
+                toothData.put("boneDistances", null);
             }
 
-            toothData.put("cejPoints", cejList);
-            toothData.put("adjustedCejPoints", adjustedCejPoints);
-            toothData.put("cejDistances", cejDistances);
-        }
-
-        for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
-            int toothNum = entry.getKey();
-            if (!healthyTeeth.contains(toothNum)) continue;
-
-            List<Point> boneList = entry.getValue();
-            Map<String, Object> toothData = result.computeIfAbsent(toothNum, k -> new HashMap<>());
-            List<Map<String, Double>> adjustedBonePoints = new ArrayList<>();
-            List<Double> boneDistances = new ArrayList<>();
-
-            if (yReferenceByTooth.containsKey(toothNum)) {
-                double yReference = yReferenceByTooth.get(toothNum);
-                boolean isMaxillary = maxillaryTeeth.contains(toothNum);
-
-                for (Point bonePoint : boneList) {
-                    double adjustedY = isMaxillary ? yReference - bonePoint.y : bonePoint.y - yReference;
-                    adjustedBonePoints.add(Map.of("x", bonePoint.x, "y", adjustedY));
-                    boneDistances.add(Math.abs(adjustedY));
-                }
-            }
-
-            toothData.put("bonePoints", boneList);
-            toothData.put("adjustedBonePoints", adjustedBonePoints);
-            toothData.put("boneDistances", boneDistances);
+            result.put(toothNum, toothData);
         }
 
         return result;
