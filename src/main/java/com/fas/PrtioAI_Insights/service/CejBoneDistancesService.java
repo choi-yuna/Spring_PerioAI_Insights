@@ -21,6 +21,9 @@ public class CejBoneDistancesService {
     private List<Scalar> tlaColor;
     private List<Integer> tlaSize;
     private List<List<Point>> bonePoints;
+
+
+
     private List<Scalar> boneColor;
     private List<Integer> boneSize;
 
