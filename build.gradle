@@ -35,9 +35,12 @@ dependencies {
 	// 나머지 의존성 설정
 }
 tasks.withType(JavaExec) {
-	systemProperty "java.library.path", "src/main/resources/libs" // 네이티브 라이브러리(DLL) 경로
+	systemProperty "java.library.path", "/src/main/resources/libs"
 }
 
+test {
+	systemProperty "java.library.path", "/src/main/resources/libs" // 네이티브 라이브러리 위치로 변경
+}
 tasks.named('test') {
 	useJUnitPlatform()
 }
