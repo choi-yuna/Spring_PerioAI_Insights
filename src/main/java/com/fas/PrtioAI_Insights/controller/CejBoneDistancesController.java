@@ -1,6 +1,5 @@
 package com.fas.PrtioAI_Insights.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fas.PrtioAI_Insights.service.CejBoneDistancesService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -21,13 +20,10 @@ import java.util.UUID;
 public class CejBoneDistancesController {
 
     private final CejBoneDistancesService cejBoneDistancesService;
-    private final ObjectMapper objectMapper;
-    private String jsonFileContent;
 
     @Autowired
-    public CejBoneDistancesController(CejBoneDistancesService cejBoneDistancesService, ObjectMapper objectMapper) {
+    public CejBoneDistancesController(CejBoneDistancesService cejBoneDistancesService) {
         this.cejBoneDistancesService = cejBoneDistancesService;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -48,12 +44,8 @@ public class CejBoneDistancesController {
             Path jsonFilePath = Paths.get(tempDir, jsonFileName);
 
             // 파일을 저장할 디렉토리가 있는지 확인하고 없으면 생성
-            if (!Files.exists(iniFilePath.getParent())) {
-                Files.createDirectories(iniFilePath.getParent());
-            }
-            if (!Files.exists(jsonFilePath.getParent())) { // JSON 파일 경로 확인 및 생성
-                Files.createDirectories(jsonFilePath.getParent());
-            }
+            Files.createDirectories(iniFilePath.getParent());
+            Files.createDirectories(jsonFilePath.getParent());
 
             // INI 파일 저장
             File iniTempFile = iniFilePath.toFile();
@@ -65,18 +57,16 @@ public class CejBoneDistancesController {
             jsonFile.transferTo(jsonTempFile);
             System.out.println("JSON file saved successfully to: " + jsonTempFile.getAbsolutePath());
 
-            // INI 파일을 파싱
-            System.out.println("Parsing INI file: " + iniFilePath.toString());
+            // INI 파일 파싱
+            System.out.println("Parsing INI file: " + iniFilePath);
             cejBoneDistancesService.parseIniFile(iniFilePath.toString());
             System.out.println("INI file parsed successfully.");
 
-            // JSON 파일 내용을 읽어와 문자열로 저장
-            System.out.println("Reading JSON file content: " + jsonFilePath.toString());
-            jsonFileContent = new String(Files.readAllBytes(jsonFilePath));
-            System.out.println("JSON file content saved successfully.");
+            // JSON 파일 경로를 통해 정상 치아 번호를 필터링하고 조정된 데이터를 생성
+            System.out.println("Calculating adjusted distances based on JSON file content...");
+            Map<Integer, Map<String, Object>> adjustedData = cejBoneDistancesService.calculateAdjustedCejBoneDistances(jsonFilePath.toString());
+            System.out.println("Adjusted data generated successfully.");
 
-            // 조정된 데이터 생성 및 JSON 반환
-            Map<Integer, Map<String, Object>> adjustedData = cejBoneDistancesService.calculateAdjustedCejBoneDistances();
             return ResponseEntity.ok(adjustedData);
 
         } catch (IOException e) {

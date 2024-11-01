@@ -1,5 +1,7 @@
 package com.fas.PrtioAI_Insights.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opencv.core.*;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -13,6 +15,7 @@ import java.util.*;
 @Service
 public class CejBoneDistancesService {
     // 기존 변수 선언
+    private final ObjectMapper objectMapper;
     private List<Integer> teethNum;
     private List<List<Point>> teethPoints;
     private List<Integer> teethSize;
@@ -51,6 +54,10 @@ public class CejBoneDistancesService {
         } catch (IOException e) {
             throw new RuntimeException("OpenCV 라이브러리 로드 실패", e);
         }
+    }
+
+    public CejBoneDistancesService(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 
     private void initialize() {
@@ -235,15 +242,37 @@ public class CejBoneDistancesService {
     }
 
 
-    public Map<Integer, Map<String, Object>> calculateAdjustedCejBoneDistances() {
-        Map<Integer, Map<String, Object>> result = new HashMap<>();
+    public Set<Integer> filterTeethFromJson(String jsonFilePath) {
+        Set<Integer> healthyTeeth = new HashSet<>();
+        try {
+            JsonNode root = objectMapper.readTree(new File(jsonFilePath));
+            JsonNode annotationData = root.path("Annotation_Data");
 
+            if (annotationData.isArray()) {
+                annotationData.get(0).fields().forEachRemaining(entry -> {
+                    String key = entry.getKey();
+                    String value = entry.getValue().asText();
+                    if (value.equals("1")) {
+                        healthyTeeth.add(Integer.parseInt(key));
+                    }
+                });
+            }
+        } catch (IOException e) {
+            System.err.println("JSON 파일 처리 중 오류 발생: " + e.getMessage());
+        }
+        return healthyTeeth;
+    }
+
+    public Map<Integer, Map<String, Object>> calculateAdjustedCejBoneDistances(String jsonFilePath) {
+        Set<Integer> healthyTeeth = filterTeethFromJson(jsonFilePath);
+        Map<Integer, Map<String, Object>> result = new HashMap<>();
         Set<Integer> maxillaryTeeth = Set.of(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28);
 
         for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
             int toothNum = entry.getKey();
-            List<Point> cejList = entry.getValue();
+            if (!healthyTeeth.contains(toothNum)) continue;
 
+            List<Point> cejList = entry.getValue();
             Map<String, Object> toothData = result.computeIfAbsent(toothNum, k -> new HashMap<>());
             List<Map<String, Double>> adjustedCejPoints = new ArrayList<>();
             List<Double> cejDistances = new ArrayList<>();
@@ -253,7 +282,7 @@ public class CejBoneDistancesService {
                 boolean isMaxillary = maxillaryTeeth.contains(toothNum);
 
                 for (Point cejPoint : cejList) {
-                    double adjustedY = isMaxillary ?  yReference - cejPoint.y : cejPoint.y - yReference ;
+                    double adjustedY = isMaxillary ? yReference - cejPoint.y : cejPoint.y - yReference;
                     adjustedCejPoints.add(Map.of("x", cejPoint.x, "y", adjustedY));
                     cejDistances.add(Math.abs(adjustedY));
                 }
@@ -266,8 +295,9 @@ public class CejBoneDistancesService {
 
         for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
             int toothNum = entry.getKey();
-            List<Point> boneList = entry.getValue();
+            if (!healthyTeeth.contains(toothNum)) continue;
 
+            List<Point> boneList = entry.getValue();
             Map<String, Object> toothData = result.computeIfAbsent(toothNum, k -> new HashMap<>());
             List<Map<String, Double>> adjustedBonePoints = new ArrayList<>();
             List<Double> boneDistances = new ArrayList<>();
@@ -277,7 +307,7 @@ public class CejBoneDistancesService {
                 boolean isMaxillary = maxillaryTeeth.contains(toothNum);
 
                 for (Point bonePoint : boneList) {
-                    double adjustedY = isMaxillary ?   yReference - bonePoint.y:bonePoint.y - yReference;
+                    double adjustedY = isMaxillary ? yReference - bonePoint.y : bonePoint.y - yReference;
                     adjustedBonePoints.add(Map.of("x", bonePoint.x, "y", adjustedY));
                     boneDistances.add(Math.abs(adjustedY));
                 }
