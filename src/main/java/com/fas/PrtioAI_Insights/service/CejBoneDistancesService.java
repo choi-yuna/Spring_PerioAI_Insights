@@ -208,6 +208,9 @@ public class CejBoneDistancesService {
         }
     }
     private void drawTeethMasks() {
+
+        Map<Integer, List<Point>> allPointsByTooth = new HashMap<>();
+
         for (int i = 0; i < teethPoints.size(); i++) {
             int toothNum = teethNum.get(i);
             if (toothNum < 11 || toothNum > 48) continue;
@@ -222,23 +225,30 @@ public class CejBoneDistancesService {
             double area = Imgproc.contourArea(pts);
             if (area < 500) continue;  // 최소 면적 조건 확인
 
+            allPointsByTooth.computeIfAbsent(toothNum, k -> new ArrayList<>()).addAll(points);
+
+
             Imgproc.polylines(combinedMask, List.of(pts), true, new Scalar(255, 255, 255), thickness);
             Imgproc.fillPoly(combinedMask, List.of(pts), new Scalar(255, 255, 255));
-
-            double minY = Double.MAX_VALUE;
-            double maxY = Double.MIN_VALUE;
-
-            for (Point p : points) {
-                if (p.y < minY) minY = p.y;
-                if (p.y > maxY) maxY = p.y;
-            }
-
-            if (toothNum >= 11 && toothNum <= 28) {
-                yReferenceByTooth.put(toothNum, maxY); // 상악 최대 Y 기준
-            } else if (toothNum >= 31 && toothNum <= 48) {
-                yReferenceByTooth.put(toothNum, minY); // 하악 최소 Y 기준
-            }
         }
+
+            for (Map.Entry<Integer, List<Point>> entry : allPointsByTooth.entrySet()) {
+                int toothNum = entry.getKey();
+                List<Point> combinedPoints = entry.getValue();
+                double minY = Double.MAX_VALUE;
+                double maxY = Double.MIN_VALUE;
+
+                for (Point p : combinedPoints) {
+                    if (p.y < minY) minY = p.y;
+                    if (p.y > maxY) maxY = p.y;
+                }
+
+                if (toothNum >= 11 && toothNum <= 28) {
+                    yReferenceByTooth.put(toothNum, maxY); // 상악 최대 Y 기준
+                } else if (toothNum >= 31 && toothNum <= 48) {
+                    yReferenceByTooth.put(toothNum, minY); // 하악 최소 Y 기준
+                }
+            }
     }
 
 
