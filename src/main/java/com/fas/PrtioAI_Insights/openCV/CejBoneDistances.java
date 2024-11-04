@@ -181,28 +181,50 @@ public class CejBoneDistances {
         }
     }
 
+
     private static void drawTeethMasks() {
+
+        // 각 치아 번호별 모든 좌표를 합친 결과를 저장하기 위한 맵
+        Map<Integer, List<Point>> allPointsByTooth = new HashMap<>();
+
+        // 각 치아 번호에 대해 좌표를 수집
         for (int i = 0; i < teethPoints.size(); i++) {
             int toothNum = teethNum.get(i);
             if (toothNum < 11 || toothNum > 48) continue;
 
             List<Point> points = teethPoints.get(i);
-            if (points.size() < 3) continue;
+            if (points.size() < 3) {
+                continue;
+            }
 
             MatOfPoint pts = new MatOfPoint();
             pts.fromList(points);
             int thickness = teethSize.get(i);
 
             double area = Imgproc.contourArea(pts);
-            if (area < 500) continue;
 
+            // 면적 필터링
+            if (area < 500) {
+                continue;
+            }
+
+            // 각 치아 번호에 해당하는 좌표를 합침
+            allPointsByTooth.computeIfAbsent(toothNum, k -> new ArrayList<>()).addAll(points);
+
+            // 폴리곤 그리기
             Imgproc.polylines(combinedMask, List.of(pts), true, new Scalar(255, 255, 255), thickness);
             Imgproc.fillPoly(combinedMask, List.of(pts), new Scalar(255, 255, 255));
+        }
+
+        // 각 치아 번호별 최대 및 최소 Y 좌표 계산
+        for (Map.Entry<Integer, List<Point>> entry : allPointsByTooth.entrySet()) {
+            int toothNum = entry.getKey();
+            List<Point> combinedPoints = entry.getValue();
 
             double minY = Double.MAX_VALUE;
             double maxY = Double.MIN_VALUE;
 
-            for (Point p : points) {
+            for (Point p : combinedPoints) {
                 if (p.y < minY) minY = p.y;
                 if (p.y > maxY) maxY = p.y;
             }
@@ -213,8 +235,13 @@ public class CejBoneDistances {
             } else if (toothNum >= 31 && toothNum <= 48) {
                 yReferenceByTooth.put(toothNum, minY); // 하악 최소 Y
             }
+
+            System.out.println("치아 번호: " + toothNum + " - 최대 Y: " + maxY + ", 최소 Y: " + minY);
         }
+
     }
+
+
 
     private static void calculateAndPrintAdjustedCejBoneDistances() {
         // 상악 치아와 하악 치아 번호 구분
