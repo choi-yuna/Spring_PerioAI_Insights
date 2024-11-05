@@ -78,6 +78,8 @@ public class CejBoneDistancesService {
         bonePointsByNum = new HashMap<>();
         bimasks = new HashMap<>();
         yReferenceByTooth = new HashMap<>();
+        maxBoundingBoxMap.clear();  // 바운딩 박스 정보 초기화
+        allPointsByTooth.clear();   // 치아 포인트 정보 초기화
         initializeMasks();
     }
 
