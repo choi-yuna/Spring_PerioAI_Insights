@@ -38,6 +38,8 @@ public class CejBoneDistancesService {
     private Map<Integer, RotatedRect> maxBoundingBoxMap = new HashMap<>();
     private Map<Integer, List<Point>> allPointsByTooth = new HashMap<>();
 
+    private Map<Integer, List<List<Point>>> filteredTlaPointsByTooth = new HashMap<>();
+
     private Mat combinedMask, cejMask, mappedCejMask, tlaMask, boneMask, cejMappedOnlyMask, boneMappedOnlyMask;
 
     static {
@@ -159,6 +161,12 @@ public class CejBoneDistancesService {
                 type_ = "D";
             } else if (work.equals("S") && line.startsWith("AD")) {
                 type_ = "A";
+            } else if (work.equals("S") && line.startsWith("DD")) {
+                type_ = "D";
+            } else if (work.equals("S") && line.startsWith("RBLD")){
+                type_ = "RBL";
+            } else if (work.equals("S") && line.startsWith("TRLD")) {
+                type_ = "TRL";
             } else if (line.startsWith("C=")) {
                 String[] parts = line.substring(2).split(",");
                 for (String part : parts) {
@@ -194,16 +202,25 @@ public class CejBoneDistancesService {
         return getAnalysisData();
     }
 
-    private  Map<Integer, List<Point>> findAndMarkIntersections() {
+    private Map<Integer, List<Point>> findAndMarkIntersections() {
         Map<Integer, List<Point>> intersectionsByTooth = new HashMap<>();
 
         // TLA와 CEJ, TLA와 Bone, CEJ와 Bone 교차점을 탐색
-        for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
+        for (Map.Entry<Integer, List<List<Point>>> entry : filteredTlaPointsByTooth.entrySet()) {
             int toothNum = entry.getKey();
             List<List<Point>> tlaSegments = entry.getValue();
 
             for (List<Point> tlaSegment : tlaSegments) {
                 if (tlaSegment.size() >= 2) {
+                    // TLA 각도 계산
+                    double dx = tlaSegment.get(1).x - tlaSegment.get(0).x;
+                    double dy = tlaSegment.get(1).y - tlaSegment.get(0).y;
+                    double angleRadians = Math.atan2(dy, dx);
+                    double angleDegrees = Math.toDegrees(angleRadians);
+
+                    System.out.println("Tooth " + toothNum + " TLA : " + angleDegrees + " 도");
+
+                    // CEJ와 Bone 교차점 찾기
                     List<Point> cejIntersections = findIntersections(Map.of(toothNum, tlaSegment), teethCejPoints, new Scalar(255, 0, 0));
                     List<Point> boneIntersections = findIntersections(Map.of(toothNum, tlaSegment), bonePointsByNum, new Scalar(0, 255, 255));
 
@@ -222,7 +239,8 @@ public class CejBoneDistancesService {
         return intersectionsByTooth;
     }
 
-    private  List<Point> findIntersections(
+    // 교차점을 찾는 메서드
+    private List<Point> findIntersections(
             Map<Integer, List<Point>> line1Points,
             Map<Integer, List<Point>> line2Points,
             Scalar intersectionColor) {
@@ -255,6 +273,7 @@ public class CejBoneDistancesService {
 
         return intersections;
     }
+
 
     private static Point getIntersection(Point p1, Point p2, Point q1, Point q2) {
         double a1 = p2.y - p1.y;
@@ -707,16 +726,15 @@ public class CejBoneDistancesService {
 
         for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
             int toothNum = entry.getKey();
-
-            // 필터링된 치아 좌표 가져오기
             List<Point> filteredToothPoints = allPointsByTooth.get(toothNum); // 필터링된 좌표 맵 사용
 
             // 필터링된 치아 폴리곤이 없는 경우 건너뛰기
             if (filteredToothPoints == null || filteredToothPoints.size() < 3) continue;
 
-            // 필터링된 치아 폴리곤 생성
             MatOfPoint2f toothPoly = new MatOfPoint2f();
             toothPoly.fromArray(filteredToothPoints.toArray(new Point[0]));
+
+            List<List<Point>> filteredTlaSegments = new ArrayList<>();
 
             for (List<Point> tlaContour : entry.getValue()) {
                 List<Point> filteredTlaPoints = new ArrayList<>();
@@ -729,13 +747,18 @@ public class CejBoneDistancesService {
                     }
                 }
 
-                // 필터링된 좌표가 2개 이상일 때만 라인을 그리기
-                if (filteredTlaPoints.size() == 2) {
+                // 필터링된 좌표가 2개 이상일 때만 저장
+                if (filteredTlaPoints.size() >= 2) {
+                    filteredTlaSegments.add(filteredTlaPoints);
                     MatOfPoint filteredPts = new MatOfPoint();
                     filteredPts.fromList(filteredTlaPoints);
                     Imgproc.polylines(tlaMask, List.of(filteredPts), true, new Scalar(0, 0, 255), 2);
-
                 }
+            }
+
+            // 필터링된 TLA 좌표를 toothNum에 따라 저장
+            if (!filteredTlaSegments.isEmpty()) {
+                filteredTlaPointsByTooth.put(toothNum, filteredTlaSegments);
             }
         }
     }
