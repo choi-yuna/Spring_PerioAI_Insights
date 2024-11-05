@@ -199,8 +199,113 @@ public class CejBoneDistancesService {
         removeIslands(bimasks, 900);
 
         saveMasks();
+
+        //TODO:- 테스트용 (cej, bone 좌표값 출력확인)
+        printFilteredPoints();
+        // 거리값 출력
+        printDistancesBetweenMinMaxXCoordinates();
+
         return getAnalysisData();
     }
+
+    // function: 치아 번호별  cej, bone 교점 거리의 최솟값을 구하는 함수
+    // Smaller Distance:- cej, bone 교점 거리의 최솟값
+    public void printDistancesBetweenMinMaxXCoordinates() {
+        // CEJ Points의 x축 최대 및 최소 좌표 간의 거리 계산 및 출력
+        System.out.println("Distances Between Min and Max X Coordinates for CEJ Points (teethCejPoints):");
+        Map<Integer, Double> cejDistances = new HashMap<>();
+
+        for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
+            int toothNum = entry.getKey();
+            List<Point> points = entry.getValue();
+
+            if (points.isEmpty()) continue;
+
+            double minX = Double.MAX_VALUE;
+            double maxX = Double.MIN_VALUE;
+            Point minXPoint = null;
+            Point maxXPoint = null;
+
+            for (Point point : points) {
+                if (point.x < minX) {
+                    minX = point.x;
+                    minXPoint = point;
+                }
+                if (point.x > maxX) {
+                    maxX = point.x;
+                    maxXPoint = point;
+                }
+            }
+
+            if (minXPoint != null && maxXPoint != null) {
+                double distance = Math.sqrt(Math.pow(maxXPoint.x - minXPoint.x, 2) + Math.pow(maxXPoint.y - minXPoint.y, 2));
+                cejDistances.put(toothNum, distance);
+                System.out.println("Tooth Number: " + toothNum);
+                System.out.println("    CEJ Min X Point: " + minXPoint);
+                System.out.println("    CEJ Max X Point: " + maxXPoint);
+                System.out.println("    CEJ Distance between Min and Max X Points: " + distance);
+            }
+        }
+
+        // Bone Points의 x축 최대 및 최소 좌표 간의 거리 계산 및 출력
+        System.out.println("\nDistances Between Min and Max X Coordinates for Bone Points (bonePointsByNum):");
+        Map<Integer, Double> boneDistances = new HashMap<>();
+
+        for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
+            int toothNum = entry.getKey();
+            List<Point> points = entry.getValue();
+
+            if (points.isEmpty()) continue;
+
+            double minX = Double.MAX_VALUE;
+            double maxX = Double.MIN_VALUE;
+            Point minXPoint = null;
+            Point maxXPoint = null;
+
+            for (Point point : points) {
+                if (point.x < minX) {
+                    minX = point.x;
+                    minXPoint = point;
+                }
+                if (point.x > maxX) {
+                    maxX = point.x;
+                    maxXPoint = point;
+                }
+            }
+
+            if (minXPoint != null && maxXPoint != null) {
+                double distance = Math.sqrt(Math.pow(maxXPoint.x - minXPoint.x, 2) + Math.pow(maxXPoint.y - minXPoint.y, 2));
+                boneDistances.put(toothNum, distance);
+                System.out.println("Tooth Number: " + toothNum);
+                System.out.println("    Bone Min X Point: " + minXPoint);
+                System.out.println("    Bone Max X Point: " + maxXPoint);
+                System.out.println("    Bone Distance between Min and Max X Points: " + distance);
+            }
+        }
+
+        // CEJ와 Bone 거리 중 작은 값을 비교하여 출력
+        System.out.println("\nSmaller distances between CEJ and Bone for each tooth:");
+        for (int toothNum = 11; toothNum <= 48; toothNum++) {
+            Double cejDistance = cejDistances.get(toothNum);
+            Double boneDistance = boneDistances.get(toothNum);
+
+            if (cejDistance == null && boneDistance == null) {
+                System.out.println("Tooth Number: " + toothNum + " - No data available for CEJ or Bone.");
+            } else if (cejDistance == null) {
+                System.out.println("Tooth Number: " + toothNum + " - Only Bone distance available: " + boneDistance);
+            } else if (boneDistance == null) {
+                System.out.println("Tooth Number: " + toothNum + " - Only CEJ distance available: " + cejDistance);
+            } else {
+                double smallerDistance = Math.min(cejDistance, boneDistance);
+                System.out.println("Tooth Number: " + toothNum);
+                System.out.println("    CEJ Distance: " + cejDistance);
+                System.out.println("    Bone Distance: " + boneDistance);
+                System.out.println("    Smaller Distance: " + smallerDistance);
+            }
+        }
+    }
+
+
 
     private Map<Integer, List<Point>> findAndMarkIntersections() {
         Map<Integer, List<Point>> intersectionsByTooth = new HashMap<>();
@@ -218,6 +323,7 @@ public class CejBoneDistancesService {
                     double angleRadians = Math.atan2(dy, dx);
                     double angleDegrees = Math.toDegrees(angleRadians);
 
+                    //TODO:- 테스트용 print (추후 삭제)
                     System.out.println("Tooth " + toothNum + " TLA : " + angleDegrees + " 도");
 
                     // CEJ와 Bone 교차점 찾기
@@ -307,6 +413,7 @@ public class CejBoneDistancesService {
             int toothNum = entry.getKey();
             List<Point> intersections = entry.getValue();
 
+            //TODO:- 테스트용 (추후 삭제) print
             System.out.println("치아 번호: " + toothNum + " - 교차점 좌표:");
             for (Point intersection : intersections) {
                 System.out.println("    " + intersection);
@@ -762,6 +869,32 @@ public class CejBoneDistancesService {
             }
         }
     }
+
+    //TODO:- 테스트용 (추후 삭제)
+    public void printFilteredPoints() {
+        // Print teethCejPoints
+        System.out.println("Filtered CEJ Points (teethCejPoints):");
+        for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
+            int toothNum = entry.getKey();
+            List<Point> points = entry.getValue();
+            System.out.println("Tooth Number: " + toothNum);
+            for (Point point : points) {
+                System.out.println("    " + point);
+            }
+        }
+
+        // Print bonePointsByNum
+        System.out.println("\nFiltered Bone Points (bonePointsByNum):");
+        for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
+            int toothNum = entry.getKey();
+            List<Point> points = entry.getValue();
+            System.out.println("Tooth Number: " + toothNum);
+            for (Point point : points) {
+                System.out.println("    " + point);
+            }
+        }
+    }
+
 
     public Map<String, Object> getAnalysisData() {
         Map<String, Object> result = new HashMap<>();
