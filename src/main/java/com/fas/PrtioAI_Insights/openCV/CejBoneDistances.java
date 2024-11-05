@@ -3,6 +3,7 @@ package com.fas.PrtioAI_Insights.openCV;
 import org.opencv.core.*;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.imgproc.Moments;
 
 import java.io.*;
 import java.util.*;
@@ -28,6 +29,7 @@ public class CejBoneDistances {
     private static Map<Integer, List<Point>> bonePointsByNum = new HashMap<>();
     private static Map<Integer, Double> yReferenceByTooth = new HashMap<>();
     private static Map<String, Mat> bimasks = new HashMap<>();
+    private static Map<Integer, RotatedRect> maxBoundingBoxMap = new HashMap<>();
 
     // 각 치아 번호별 모든 좌표를 합친 결과를 저장하기 위한 맵
     private static Map<Integer, List<Point>> allPointsByTooth = new HashMap<>();
@@ -189,13 +191,68 @@ public class CejBoneDistances {
             }
         }
     }
+    private static void calculateAndPrintAllDistancesToBoundingBox(RotatedRect boundingBox, List<Point> cejPoints, int toothNum) {
+        // 바운딩 박스의 네 꼭짓점 계산
+        Point[] boxPoints = new Point[4];
+        boundingBox.points(boxPoints);
+
+        // 상단과 하단 라인 정의 (RotatedRect를 기준으로)
+        Point topLeft = boxPoints[0];
+        Point topRight = boxPoints[1];
+        Point bottomRight = boxPoints[2];
+        Point bottomLeft = boxPoints[3];
+
+        System.out.println("치아 번호: " + toothNum + " - 바운딩 박스와 CEJ 사이의 모든 거리:");
+
+        // 상악과 하악을 구분하기 위해 치아 번호를 사용
+        boolean isMaxillary = (toothNum >= 11 && toothNum <= 28); // 상악 치아 번호
+        boolean isMandibular = (toothNum >= 31 && toothNum <= 48); // 하악 치아 번호
+
+        // 상단과 하단 선의 기울기와 y절편 계산
+        double topSlope = (topRight.y - topLeft.y) / (topRight.x - topLeft.x);
+        double topIntercept = topLeft.y - topSlope * topLeft.x;
+
+        double bottomSlope = (bottomRight.y - bottomLeft.y) / (bottomRight.x - bottomLeft.x);
+        double bottomIntercept = bottomLeft.y - bottomSlope * bottomLeft.x;
+
+        for (Point cejPoint : cejPoints) {
+            // CEJ 점의 x 좌표에 따라 상단 또는 하단 y 좌표를 계산
+
+            // 선형 방정식을 사용하여 주어진 x 좌표에서 상단과 하단 y 값 계산
+            double topY = topSlope * cejPoint.x + topIntercept;
+            double bottomY = bottomSlope * cejPoint.x + bottomIntercept;
+
+            // 바운딩 박스 x 범위 내의 CEJ 점과 바운딩 박스 경계 사이의 거리 계산
+            if (cejPoint.x >= Math.min(topLeft.x, topRight.x) && cejPoint.x <= Math.max(topLeft.x, topRight.x)) {
+                double distance;
+                if (isMaxillary) {
+                    // 상악일 경우 bottomY를 기준으로 거리 계산
+                    distance = Math.abs(cejPoint.y - bottomY);
+                    System.out.println("    상악 치아 - CEJ 좌표: " + cejPoint + " -> 바운딩 박스 하단과의 거리: " + distance);
+                } else if (isMandibular) {
+                    // 하악일 경우 topY를 기준으로 거리 계산
+                    distance = Math.abs(cejPoint.y - topY);
+                    System.out.println("    하악 치아 - CEJ 좌표: " + cejPoint + " -> 바운딩 박스 상단과의 거리: " + distance);
+                }
+            }
+        }
+    }
+
+    // 두 점 사이의 선형 보간을 사용하여 특정 x에서의 y 좌표를 계산
+    private static double interpolateY(Point p1, Point p2, double x) {
+        if (p1.x == p2.x) {
+            return p1.y;  // 수직선의 경우 p1.y 값을 반환
+        }
+        // 선형 보간을 통해 y 좌표 계산
+        return p1.y + (p2.y - p1.y) * (x - p1.x) / (p2.x - p1.x);
+    }
 
 
 
 // CEJ, Bone, TLA를 그리기 위한 기존 코드에 바운딩 박스를 추가하여 전체 코드를 수정합니다.
 
     private static void drawCombinedMask() {
-        // 치아 폴리곤 그리기 및 바운딩 박스 그리기
+        // 치아 폴리곤 그리기 및 폴리곤 기반의 최대 바운딩 박스 그리기
         for (int i = 0; i < teethPoints.size(); i++) {
             int toothNum = teethNum.get(i);
             if (toothNum < 11 || toothNum > 48) continue;
@@ -207,23 +264,45 @@ public class CejBoneDistances {
             pts.fromList(points);
             int thickness = teethSize.get(i);
 
-            double area = Imgproc.contourArea(pts);
-            if (area < 900) continue;
+            double toothArea = Imgproc.contourArea(pts);
+            if (toothArea < 900) continue;  // 치아 폴리곤의 최소 면적 필터
 
             // 치아 폴리곤 그리기 - 흰색
             Imgproc.polylines(combinedMask, List.of(pts), true, new Scalar(255, 255, 255), thickness);
             Imgproc.fillPoly(combinedMask, List.of(pts), new Scalar(255, 255, 255));
 
-            // 치아 폴리곤의 바운딩 박스 생성 (회전 없이 직사각형으로 그리기)
-            Rect boundingBox = Imgproc.boundingRect(pts);
+            // 폴리곤 좌표를 기반으로 최소 외접 직사각형 생성
+            MatOfPoint2f pointsMat = new MatOfPoint2f(points.toArray(new Point[0]));
+            RotatedRect rotatedBoundingBox = Imgproc.minAreaRect(pointsMat);
 
-            // 바운딩 박스를 노란색으로 그리기
-            Point topLeft = new Point(boundingBox.x, boundingBox.y);
-            Point bottomRight = new Point(boundingBox.x + boundingBox.width, boundingBox.y + boundingBox.height);
-            Imgproc.rectangle(combinedMask, topLeft, bottomRight, new Scalar(0, 255, 255), 2);
+            // 최대 면적을 가진 바운딩 박스 저장
+            if (maxBoundingBoxMap.containsKey(toothNum)) {
+                RotatedRect existingBox = maxBoundingBoxMap.get(toothNum);
+                if (existingBox.size.area() < rotatedBoundingBox.size.area()) {
+                    maxBoundingBoxMap.put(toothNum, rotatedBoundingBox);
+                }
+            } else {
+                maxBoundingBoxMap.put(toothNum, rotatedBoundingBox);
+            }
         }
 
+        // 저장된 최대 바운딩 박스만 그리기
+        for (Map.Entry<Integer, RotatedRect> entry : maxBoundingBoxMap.entrySet()) {
+            RotatedRect maxBox = entry.getValue();
+            int toothNum = entry.getKey();
 
+            Point[] boxPoints = new Point[4];
+            maxBox.points(boxPoints);
+            for (int j = 0; j < 4; j++) {
+                Imgproc.line(combinedMask, boxPoints[j], boxPoints[(j + 1) % 4], new Scalar(0, 255, 255), 2);
+            }
+
+            // CEJ와 바운딩 박스 상단 경계 사이의 모든 거리 계산
+            List<Point> cejPointsForTooth = teethCejPoints.get(toothNum);
+            if (cejPointsForTooth != null) {
+                calculateAndPrintAllDistancesToBoundingBox(maxBox, cejPointsForTooth, toothNum);
+            }
+        }
 
 
         // CEJ 폴리곤 그리기 (drawAndMapCejMask의 필터 조건 반영)
