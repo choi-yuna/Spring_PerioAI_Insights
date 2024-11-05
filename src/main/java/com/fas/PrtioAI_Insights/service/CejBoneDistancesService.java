@@ -306,7 +306,7 @@ public class CejBoneDistancesService {
     }
 
 
-
+    //TLA 각도 찾기
     private Map<Integer, List<Point>> findAndMarkIntersections() {
         Map<Integer, List<Point>> intersectionsByTooth = new HashMap<>();
 
