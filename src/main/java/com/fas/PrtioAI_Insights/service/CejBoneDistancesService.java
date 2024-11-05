@@ -201,7 +201,7 @@ public class CejBoneDistancesService {
         saveMasks();
 
         //TODO:- 테스트용 (cej, bone 좌표값 출력확인)
-        printFilteredPoints();
+        //printFilteredPoints();
         // 거리값 출력
         printDistancesBetweenMinMaxXCoordinates();
 
@@ -421,6 +421,7 @@ public class CejBoneDistancesService {
         }
     }
 
+    // verticalLength :- 저장된 최대 바운딩 박스의 세로 길이
     private  void drawCombinedMask() {
         // 치아 폴리곤 그리기 및 폴리곤 기반의 최대 바운딩 박스 그리기
         for (int i = 0; i < teethPoints.size(); i++) {
@@ -455,6 +456,18 @@ public class CejBoneDistancesService {
                 maxBoundingBoxMap.put(toothNum, rotatedBoundingBox);
             }
         }
+        // 저장된 최대 바운딩 박스의 세로 길이 출력
+        System.out.println("Vertical length of bounding boxes for each tooth:");
+        for (Map.Entry<Integer, RotatedRect> entry : maxBoundingBoxMap.entrySet()) {
+            RotatedRect maxBox = entry.getValue();
+            int toothNum = entry.getKey();
+
+            // 세로 길이 출력
+            double verticalLength = maxBox.size.height;
+            System.out.println("Tooth Number: " + toothNum);
+            System.out.println("    Vertical Length: " + verticalLength);
+        }
+
 
         // 저장된 최대 바운딩 박스만 그리기
         for (Map.Entry<Integer, RotatedRect> entry : maxBoundingBoxMap.entrySet()) {
