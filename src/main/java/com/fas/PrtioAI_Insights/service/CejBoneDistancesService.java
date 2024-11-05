@@ -30,14 +30,14 @@ public class CejBoneDistancesService {
     private List<Scalar> boneColor;
     private List<Integer> boneSize;
 
-    private Map<Integer, List<Point>> teethCejPoints;
     private Map<Integer, List<List<Point>>> tlaPointsByNum;
-    private Map<Integer, List<Point>> bonePointsByNum;
     private Map<String, Mat> bimasks;
     private Map<Integer, Double> yReferenceByTooth;
     private Map<Integer, RotatedRect> maxBoundingBoxMap = new HashMap<>();
     private Map<Integer, List<Point>> allPointsByTooth = new HashMap<>();
 
+    private Map<Integer, List<Point>> filteredCejPointsByTooth;
+    private Map<Integer, List<Point>> filteredBonePointsByTooth;
     private Map<Integer, List<List<Point>>> filteredTlaPointsByTooth = new HashMap<>();
 
     private Mat combinedMask, cejMask, mappedCejMask, tlaMask, boneMask, cejMappedOnlyMask, boneMappedOnlyMask;
@@ -75,9 +75,9 @@ public class CejBoneDistancesService {
         bonePoints = new ArrayList<>();
         boneColor = new ArrayList<>();
         boneSize = new ArrayList<>();
-        teethCejPoints = new HashMap<>();
+        filteredCejPointsByTooth = new HashMap<>();
         tlaPointsByNum = new HashMap<>();
-        bonePointsByNum = new HashMap<>();
+        filteredBonePointsByTooth = new HashMap<>();
         bimasks = new HashMap<>();
         yReferenceByTooth = new HashMap<>();
         maxBoundingBoxMap.clear();  // 바운딩 박스 정보 초기화
@@ -215,7 +215,7 @@ public class CejBoneDistancesService {
         System.out.println("Distances Between Min and Max X Coordinates for CEJ Points (teethCejPoints):");
         Map<Integer, Double> cejDistances = new HashMap<>();
 
-        for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
+        for (Map.Entry<Integer, List<Point>> entry : filteredCejPointsByTooth.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> points = entry.getValue();
 
@@ -251,7 +251,7 @@ public class CejBoneDistancesService {
         System.out.println("\nDistances Between Min and Max X Coordinates for Bone Points (bonePointsByNum):");
         Map<Integer, Double> boneDistances = new HashMap<>();
 
-        for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
+        for (Map.Entry<Integer, List<Point>> entry : filteredBonePointsByTooth.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> points = entry.getValue();
 
@@ -327,8 +327,8 @@ public class CejBoneDistancesService {
                     System.out.println("Tooth " + toothNum + " TLA : " + angleDegrees + " 도");
 
                     // CEJ와 Bone 교차점 찾기
-                    List<Point> cejIntersections = findIntersections(Map.of(toothNum, tlaSegment), teethCejPoints, new Scalar(255, 0, 0));
-                    List<Point> boneIntersections = findIntersections(Map.of(toothNum, tlaSegment), bonePointsByNum, new Scalar(0, 255, 255));
+                    List<Point> cejIntersections = findIntersections(Map.of(toothNum, tlaSegment), filteredCejPointsByTooth, new Scalar(255, 0, 0));
+                    List<Point> boneIntersections = findIntersections(Map.of(toothNum, tlaSegment), filteredBonePointsByTooth, new Scalar(0, 255, 255));
 
                     intersectionsByTooth.computeIfAbsent(toothNum, k -> new ArrayList<>()).addAll(cejIntersections);
                     intersectionsByTooth.computeIfAbsent(toothNum, k -> new ArrayList<>()).addAll(boneIntersections);
@@ -336,8 +336,8 @@ public class CejBoneDistancesService {
             }
         }
 
-        List<Point> cejBoneIntersections = findIntersections(teethCejPoints, bonePointsByNum, new Scalar(0, 0, 255)); // CEJ와 Bone 교차점
-        for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
+        List<Point> cejBoneIntersections = findIntersections(filteredCejPointsByTooth, filteredBonePointsByTooth, new Scalar(0, 0, 255)); // CEJ와 Bone 교차점
+        for (Map.Entry<Integer, List<Point>> entry : filteredCejPointsByTooth.entrySet()) {
             int toothNum = entry.getKey();
             intersectionsByTooth.computeIfAbsent(toothNum, k -> new ArrayList<>()).addAll(cejBoneIntersections);
         }
@@ -481,7 +481,7 @@ public class CejBoneDistancesService {
             }
 
             // CEJ와 바운딩 박스 상단 경계 사이의 모든 거리 계산
-            List<Point> cejPointsForTooth = teethCejPoints.get(toothNum);
+            List<Point> cejPointsForTooth = filteredCejPointsByTooth.get(toothNum);
             if (cejPointsForTooth != null) {
             }
         }
@@ -694,7 +694,7 @@ public class CejBoneDistancesService {
 
             // 정상 치아 번호라면 좌표 계산
             if (healthyTeeth.contains(toothNum)) {
-                List<Point> cejList = teethCejPoints.getOrDefault(toothNum, Collections.emptyList());
+                List<Point> cejList = filteredCejPointsByTooth.getOrDefault(toothNum, Collections.emptyList());
                 List<Map<String, Double>> adjustedCejPoints = new ArrayList<>();
                 List<Double> cejDistances = new ArrayList<>();
 
@@ -712,7 +712,7 @@ public class CejBoneDistancesService {
                 toothData.put("cejPoints", cejList);
                 toothData.put("adjustedCejPoints", adjustedCejPoints);
                 toothData.put("cejDistances", cejDistances);
-                List<Point> boneList = bonePointsByNum.getOrDefault(toothNum, Collections.emptyList());
+                List<Point> boneList = filteredBonePointsByTooth.getOrDefault(toothNum, Collections.emptyList());
                 List<Map<String, Double>> adjustedBonePoints = new ArrayList<>();
                 List<Double> boneDistances = new ArrayList<>();
 
@@ -788,7 +788,7 @@ public class CejBoneDistancesService {
                     MatOfPoint validPts = new MatOfPoint();
                     validPts.fromList(validCejPoints);
                     Imgproc.polylines(cejMappedOnlyMask, Collections.singletonList(validPts), false, new Scalar(0, 255, 0), 2);
-                    teethCejPoints.put(toothNum, validCejPoints); // 필터링된 좌표 저장
+                    filteredCejPointsByTooth.put(toothNum, validCejPoints); // 필터링된 좌표 저장
                 }
             }
         }
@@ -834,7 +834,7 @@ public class CejBoneDistancesService {
                     MatOfPoint validPts = new MatOfPoint();
                     validPts.fromList(validBonePoints);
                     Imgproc.polylines(boneMappedOnlyMask, Collections.singletonList(validPts), false, new Scalar(0, 255, 0), 3);
-                    bonePointsByNum.put(toothNum, validBonePoints); // 필터링된 좌표 저장
+                    filteredBonePointsByTooth.put(toothNum, validBonePoints); // 필터링된 좌표 저장
                 }
             }
         }
@@ -887,7 +887,7 @@ public class CejBoneDistancesService {
     public void printFilteredPoints() {
         // Print teethCejPoints
         System.out.println("Filtered CEJ Points (teethCejPoints):");
-        for (Map.Entry<Integer, List<Point>> entry : teethCejPoints.entrySet()) {
+        for (Map.Entry<Integer, List<Point>> entry : filteredCejPointsByTooth.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> points = entry.getValue();
             System.out.println("Tooth Number: " + toothNum);
@@ -898,7 +898,7 @@ public class CejBoneDistancesService {
 
         // Print bonePointsByNum
         System.out.println("\nFiltered Bone Points (bonePointsByNum):");
-        for (Map.Entry<Integer, List<Point>> entry : bonePointsByNum.entrySet()) {
+        for (Map.Entry<Integer, List<Point>> entry : filteredBonePointsByTooth.entrySet()) {
             int toothNum = entry.getKey();
             List<Point> points = entry.getValue();
             System.out.println("Tooth Number: " + toothNum);
@@ -923,9 +923,9 @@ public class CejBoneDistancesService {
         result.put("bonePoints", bonePoints);
         result.put("boneColor", boneColor);
         result.put("boneSize", boneSize);
-        result.put("teethCejPoints", teethCejPoints);
+        result.put("teethCejPoints", filteredCejPointsByTooth);
         result.put("tlaPointsByNum", tlaPointsByNum);
-        result.put("bonePointsByNum", bonePointsByNum);
+        result.put("bonePointsByNum", filteredBonePointsByTooth);
         return result;
     }
 }
