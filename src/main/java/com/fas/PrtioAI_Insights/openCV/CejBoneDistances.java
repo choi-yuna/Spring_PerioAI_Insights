@@ -61,7 +61,6 @@ public class CejBoneDistances {
 
             removeIslands(bimasks, 900);
 
-            Imgcodecs.imwrite("Combined_Teeth_Mask.png", combinedMask);
             Imgcodecs.imwrite("cejMask.png", cejMask);
             Imgcodecs.imwrite("mappedCejMask.png", mappedCejMask);
             Imgcodecs.imwrite("tlaMask.png", tlaMask);
