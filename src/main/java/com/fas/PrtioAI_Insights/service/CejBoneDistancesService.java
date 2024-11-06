@@ -42,7 +42,7 @@ public class CejBoneDistancesService {
 
     private Map<Integer, List<Point>> cejIntersectionsByTooth;
     private Map<Integer, List<Point>> boneIntersectionsByTooth;
-    private  Map<Integer, Double> tlaAngleByTooth;
+    private Map<Integer, Double> tlaAngleByTooth;
 
 
     private Mat combinedMask, cejMask, mappedCejMask, tlaMask, boneMask, cejMappedOnlyMask, boneMappedOnlyMask;
@@ -171,7 +171,7 @@ public class CejBoneDistancesService {
                 type_ = "A";
             } else if (work.equals("S") && line.startsWith("DD")) {
                 type_ = "D";
-            } else if (work.equals("S") && line.startsWith("RBLD")){
+            } else if (work.equals("S") && line.startsWith("RBLD")) {
                 type_ = "RBL";
             } else if (work.equals("S") && line.startsWith("TRLD")) {
                 type_ = "TRL";
@@ -319,7 +319,7 @@ public class CejBoneDistancesService {
     private Map<Integer, Map<String, Point>> findAndMarkLastIntersections() {
         Map<Integer, Map<String, Point>> intersectionsByTooth = new HashMap<>();
 
-        for (Map.Entry<Integer, List<List<Point>>> entry : filteredTlaPointsByTooth.entrySet()) {
+        for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
             int toothNum = entry.getKey();
             List<List<Point>> tlaSegments = entry.getValue();
 
@@ -328,22 +328,16 @@ public class CejBoneDistancesService {
 
             if (cejIntersections == null || boneIntersections == null) continue;
 
-            double minCejX = cejIntersections.stream().mapToDouble(p -> p.x).min().orElse(Double.MIN_VALUE);
-            double maxCejX = cejIntersections.stream().mapToDouble(p -> p.x).max().orElse(Double.MAX_VALUE);
-            double minBoneX = boneIntersections.stream().mapToDouble(p -> p.x).min().orElse(Double.MIN_VALUE);
-            double maxBoneX = boneIntersections.stream().mapToDouble(p -> p.x).max().orElse(Double.MAX_VALUE);
-
-            double minAllowedX = Math.min(minCejX, minBoneX);
-            double maxAllowedX = Math.max(maxCejX, maxBoneX);
-
             for (List<Point> tlaSegment : tlaSegments) {
                 if (tlaSegment.size() >= 2) {
-                    double totalDx = tlaSegment.get(1).x - tlaSegment.get(0).x;
-                    double totalDy = tlaSegment.get(1).y - tlaSegment.get(0).y;
-                    double length = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
-                    double shiftX = (totalDy / length);
-                    double shiftY = -(totalDx / length);
+                    // 방향 설정 (단위 벡터)
+                    double dx = tlaSegment.get(1).x - tlaSegment.get(0).x;
+                    double dy = tlaSegment.get(1).y - tlaSegment.get(0).y;
+                    double length = Math.sqrt(dx * dx + dy * dy);
+                    double shiftX = -dy / length;  // 가로 이동이므로 y의 역방향
+                    double shiftY = dx / length;   // 가로 이동이므로 x 방향
 
+                    // 결과 저장용
                     List<Point> finalShiftedTlaLeft = new ArrayList<>();
                     List<Point> finalShiftedTlaRight = new ArrayList<>();
                     Point lastCejIntersectionLeft = null;
@@ -353,22 +347,23 @@ public class CejBoneDistancesService {
                     boolean foundLeft = false;
                     boolean foundRight = false;
 
+                    // TLA 선을 좌우 방향으로 평행 이동
                     for (double offset = -50; offset <= 50; offset += 1) {
+                        // 왼쪽으로 이동한 TLA 선
                         List<Point> shiftedTlaLeft = new ArrayList<>();
-                        List<Point> shiftedTlaRight = new ArrayList<>();
-
                         for (Point p : tlaSegment) {
                             Point leftShifted = new Point(p.x + offset * shiftX, p.y + offset * shiftY);
-                            Point rightShifted = new Point(p.x - offset * shiftX, p.y - offset * shiftY);
-
-                            if (leftShifted.x >= minAllowedX && leftShifted.x <= maxAllowedX) {
-                                shiftedTlaLeft.add(leftShifted);
-                            }
-                            if (rightShifted.x >= minAllowedX && rightShifted.x <= maxAllowedX) {
-                                shiftedTlaRight.add(rightShifted);
-                            }
+                            shiftedTlaLeft.add(leftShifted);
                         }
 
+                        // 오른쪽으로 이동한 TLA 선
+                        List<Point> shiftedTlaRight = new ArrayList<>();
+                        for (Point p : tlaSegment) {
+                            Point rightShifted = new Point(p.x - offset * shiftX, p.y - offset * shiftY);
+                            shiftedTlaRight.add(rightShifted);
+                        }
+
+                        // 왼쪽 이동 TLA 선의 CEJ와 Bone 교점 탐색
                         if (!shiftedTlaLeft.isEmpty()) {
                             Point currentCejIntersectionLeft = findClosestIntersection(shiftedTlaLeft, cejIntersections);
                             Point currentBoneIntersectionLeft = findClosestIntersection(shiftedTlaLeft, boneIntersections);
@@ -378,9 +373,14 @@ public class CejBoneDistancesService {
                                 lastBoneIntersectionLeft = currentBoneIntersectionLeft;
                                 finalShiftedTlaLeft = new ArrayList<>(shiftedTlaLeft);
                                 foundLeft = true;
+
+                                // 치아 번호별 교점이 끝나는지 확인하고 종료
+                                if (isEndOfIntersection(currentCejIntersectionLeft, cejIntersections)
+                                        || isEndOfIntersection(currentBoneIntersectionLeft, boneIntersections)) break;
                             } else if (foundLeft) break;
                         }
 
+                        // 오른쪽 이동 TLA 선의 CEJ와 Bone 교점 탐색
                         if (!shiftedTlaRight.isEmpty()) {
                             Point currentCejIntersectionRight = findClosestIntersection(shiftedTlaRight, cejIntersections);
                             Point currentBoneIntersectionRight = findClosestIntersection(shiftedTlaRight, boneIntersections);
@@ -390,10 +390,14 @@ public class CejBoneDistancesService {
                                 lastBoneIntersectionRight = currentBoneIntersectionRight;
                                 finalShiftedTlaRight = new ArrayList<>(shiftedTlaRight);
                                 foundRight = true;
+
+                                if (isEndOfIntersection(currentCejIntersectionRight, cejIntersections)
+                                        || isEndOfIntersection(currentBoneIntersectionRight, boneIntersections)) break;
                             } else if (foundRight) break;
                         }
                     }
 
+                    // 교점들을 저장 및 시각화
                     Map<String, Point> toothIntersections = new HashMap<>();
                     if (foundLeft) {
                         toothIntersections.put("Last_CEJ_Intersection_Left", lastCejIntersectionLeft);
@@ -422,6 +426,34 @@ public class CejBoneDistancesService {
             }
         }
         return intersectionsByTooth;
+    }
+
+    // 교점이 치아 번호별로 끝나는 시점인지 확인하는 함수
+    private boolean isEndOfIntersection(Point intersection, List<Point> intersections) {
+        if (intersections.isEmpty()) return true;
+
+        Point lastPoint = intersections.get(intersections.size() - 1);
+        return intersection.equals(lastPoint); // 마지막 교점이면 true 반환
+    }
+
+
+
+    // 주어진 교점이 흰색 영역(치아) 안에 있는지 확인하는 함수
+    private boolean isInsideWhiteArea(Point intersection, Mat toothMask) {
+        if (intersection.x < 0 || intersection.y < 0 || intersection.x >= toothMask.width() || intersection.y >= toothMask.height()) {
+            return false;
+        }
+        double[] pixelValue = toothMask.get((int) intersection.y, (int) intersection.x);
+        return pixelValue[0] > 0; // 흰색 영역이라면 0보다 큰 값이어야 함
+    }
+
+
+
+    // CEJ 또는 Bone 교점이 치아 테두리 안에 있는지 확인하는 함수
+    private boolean isWithinToothBoundary(Point intersection, List<Point> toothBoundary) {
+        MatOfPoint2f boundaryMat = new MatOfPoint2f(toothBoundary.toArray(new Point[0]));
+        double distance = Imgproc.pointPolygonTest(boundaryMat, intersection, false);
+        return distance >= 0; // 0 이상이면 영역 안 또는 경계 위에 있음
     }
 
 
