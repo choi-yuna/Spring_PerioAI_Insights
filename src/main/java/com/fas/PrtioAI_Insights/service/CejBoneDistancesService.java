@@ -45,6 +45,9 @@ public class CejBoneDistancesService {
     private Map<Integer, Double> tlaAngleByTooth;
 
     private Map<Integer, List<Point>> toothBoundaries;
+    // 치아 번호별 바운딩 박스와 TLA 선 간 교차점을 저장하는 변수
+    private Map<Integer, List<Point>> boundingBoxIntersectionsByTooth = new HashMap<>();
+
 
 
     private Mat combinedMask, cejMask, mappedCejMask, tlaMask, boneMask, cejMappedOnlyMask, boneMappedOnlyMask;
@@ -212,110 +215,12 @@ public class CejBoneDistancesService {
 
         saveMasks();
 
-        //TODO:- 테스트용 (cej, bone 좌표값 출력확인)
-        //printFilteredPoints();
-        // 거리값 출력
-        printDistancesBetweenMinMaxXCoordinates();
+
 
         return getAnalysisData();
     }
 
-    // function: 치아 번호별  cej, bone 교점 거리의 최솟값을 구하는 함수
-    // Smaller Distance:- cej, bone 교점 거리의 최솟값
-    public void printDistancesBetweenMinMaxXCoordinates() {
-        // CEJ Points의 x축 최대 및 최소 좌표 간의 거리 계산 및 출력
-        System.out.println("Distances Between Min and Max X Coordinates for CEJ Points (teethCejPoints):");
-        Map<Integer, Double> cejDistances = new HashMap<>();
 
-        for (Map.Entry<Integer, List<Point>> entry : filteredCejPointsByTooth.entrySet()) {
-            int toothNum = entry.getKey();
-            List<Point> points = entry.getValue();
-
-            if (points.isEmpty()) continue;
-
-            double minX = Double.MAX_VALUE;
-            double maxX = Double.MIN_VALUE;
-            Point minXPoint = null;
-            Point maxXPoint = null;
-
-            for (Point point : points) {
-                if (point.x < minX) {
-                    minX = point.x;
-                    minXPoint = point;
-                }
-                if (point.x > maxX) {
-                    maxX = point.x;
-                    maxXPoint = point;
-                }
-            }
-
-            if (minXPoint != null && maxXPoint != null) {
-                double distance = Math.sqrt(Math.pow(maxXPoint.x - minXPoint.x, 2) + Math.pow(maxXPoint.y - minXPoint.y, 2));
-                cejDistances.put(toothNum, distance);
-                System.out.println("Tooth Number: " + toothNum);
-                System.out.println("    CEJ Min X Point: " + minXPoint);
-                System.out.println("    CEJ Max X Point: " + maxXPoint);
-                System.out.println("    CEJ Distance between Min and Max X Points: " + distance);
-            }
-        }
-
-        // Bone Points의 x축 최대 및 최소 좌표 간의 거리 계산 및 출력
-        System.out.println("\nDistances Between Min and Max X Coordinates for Bone Points (bonePointsByNum):");
-        Map<Integer, Double> boneDistances = new HashMap<>();
-
-        for (Map.Entry<Integer, List<Point>> entry : filteredBonePointsByTooth.entrySet()) {
-            int toothNum = entry.getKey();
-            List<Point> points = entry.getValue();
-
-            if (points.isEmpty()) continue;
-
-            double minX = Double.MAX_VALUE;
-            double maxX = Double.MIN_VALUE;
-            Point minXPoint = null;
-            Point maxXPoint = null;
-
-            for (Point point : points) {
-                if (point.x < minX) {
-                    minX = point.x;
-                    minXPoint = point;
-                }
-                if (point.x > maxX) {
-                    maxX = point.x;
-                    maxXPoint = point;
-                }
-            }
-
-            if (minXPoint != null && maxXPoint != null) {
-                double distance = Math.sqrt(Math.pow(maxXPoint.x - minXPoint.x, 2) + Math.pow(maxXPoint.y - minXPoint.y, 2));
-                boneDistances.put(toothNum, distance);
-                System.out.println("Tooth Number: " + toothNum);
-                System.out.println("    Bone Min X Point: " + minXPoint);
-                System.out.println("    Bone Max X Point: " + maxXPoint);
-                System.out.println("    Bone Distance between Min and Max X Points: " + distance);
-            }
-        }
-
-        // CEJ와 Bone 거리 중 작은 값을 비교하여 출력
-        System.out.println("\nSmaller distances between CEJ and Bone for each tooth:");
-        for (int toothNum = 11; toothNum <= 48; toothNum++) {
-            Double cejDistance = cejDistances.get(toothNum);
-            Double boneDistance = boneDistances.get(toothNum);
-
-            if (cejDistance == null && boneDistance == null) {
-                System.out.println("Tooth Number: " + toothNum + " - No data available for CEJ or Bone.");
-            } else if (cejDistance == null) {
-                System.out.println("Tooth Number: " + toothNum + " - Only Bone distance available: " + boneDistance);
-            } else if (boneDistance == null) {
-                System.out.println("Tooth Number: " + toothNum + " - Only CEJ distance available: " + cejDistance);
-            } else {
-                double smallerDistance = Math.min(cejDistance, boneDistance);
-                System.out.println("Tooth Number: " + toothNum);
-                System.out.println("    CEJ Distance: " + cejDistance);
-                System.out.println("    Bone Distance: " + boneDistance);
-                System.out.println("    Smaller Distance: " + smallerDistance);
-            }
-        }
-    }
 
 
     private Map<Integer, Map<String, Point>> findAndMarkLastIntersections() {
@@ -423,8 +328,10 @@ public class CejBoneDistancesService {
                     }
 
                     // 바운딩 박스와 TLA 교점 찾기
-                    List<Point> boundingBoxIntersectionsLeft = findBoundingBoxIntersections(finalShiftedTlaLeft, toothBoundary);
-                    List<Point> boundingBoxIntersectionsRight = findBoundingBoxIntersections(finalShiftedTlaRight, toothBoundary);
+
+                    List<Point> boundingBoxIntersectionsLeft = findBoundingBoxIntersections(finalShiftedTlaLeft, toothBoundary, toothNum);
+                    List<Point> boundingBoxIntersectionsRight = findBoundingBoxIntersections(finalShiftedTlaRight, toothBoundary, toothNum);
+
 
                     for (Point intersection : boundingBoxIntersectionsLeft) {
                         Imgproc.circle(combinedMask, intersection, 5, new Scalar(255, 255, 0), -1); // 노란색으로 왼쪽 교점 표시
@@ -442,8 +349,9 @@ public class CejBoneDistancesService {
         return intersectionsByTooth;
     }
 
-    // 바운딩 박스와 TLA 선 간 교점을 찾는 메서드
-    private List<Point> findBoundingBoxIntersections(List<Point> shiftedTla, List<Point> boundingBox) {
+
+    // 바운딩 박스와 TLA 선 간 교점을 찾는 메서드 (치아 번호별로 교점 좌표를 반환)
+    private List<Point> findBoundingBoxIntersections(List<Point> shiftedTla, List<Point> boundingBox, int toothNum) {
         List<Point> intersections = new ArrayList<>();
         for (int i = 0; i < shiftedTla.size() - 1; i++) {
             Point p1 = shiftedTla.get(i);
@@ -452,25 +360,27 @@ public class CejBoneDistancesService {
                 Point q1 = boundingBox.get(j);
                 Point q2 = boundingBox.get((j + 1) % boundingBox.size());
                 Point intersection = findExactIntersection(p1, p2, q1, q2);
-                if (intersection != null) {
-                    intersections.add(intersection);
-                }
+                if (intersection != null) intersections.add(intersection);
             }
         }
-        return intersections;
+
+        if (!intersections.isEmpty()) {
+            boundingBoxIntersectionsByTooth.put(toothNum, intersections);
+            printBoundingBoxIntersections(toothNum, intersections);
+        }
+
+        return intersections; // 교차점 리스트 반환
     }
 
 
-    // 교점이 치아 번호별로 끝나는 시점인지 확인하는 함수
-    private boolean isEndOfIntersection(Point intersection, List<Point> intersections) {
-        if (intersections.isEmpty()) return true;
-
-        Point lastPoint = intersections.get(intersections.size() - 1);
-        return intersection.equals(lastPoint); // 마지막 교점이면 true 반환
+    // 교차점 출력 메서드
+    private void printBoundingBoxIntersections(int toothNum, List<Point> intersections) {
+        System.out.println("치아 번호: " + toothNum + " - TLA와 Bounding Box 교차점 좌표:");
+        for (int i = 0; i < intersections.size(); i++) {
+            Point intersection = intersections.get(i);
+            System.out.printf("    Intersection_%d: {%.2f, %.2f}%n", i + 1, intersection.x, intersection.y);
+        }
     }
-
-
-
 
 
 
@@ -977,11 +887,7 @@ public class CejBoneDistancesService {
             List<Point> minMaxIntersections = getMinMaxXIntersections(toothIntersections);
 
             System.out.println("Tooth Number: " + toothNum);
-            if (!minMaxIntersections.isEmpty()) {
-                System.out.println("Min X Intersection: " + minMaxIntersections.get(0));
-                if (minMaxIntersections.size() > 1) {
-                    System.out.println("Max X Intersection: " + minMaxIntersections.get(1));
-                }
+
 
                 // 교차점을 mask에 표시
                 for (Point intersection : minMaxIntersections) {
@@ -989,7 +895,7 @@ public class CejBoneDistancesService {
                 }
             }
         }
-    }
+
 
     private void drawAndMapBoneMask() {
         // Bone 교차점 저장을 위한 Map 초기화
