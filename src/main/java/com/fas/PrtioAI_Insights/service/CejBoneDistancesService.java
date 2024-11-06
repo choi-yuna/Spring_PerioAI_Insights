@@ -323,7 +323,6 @@ public class CejBoneDistancesService {
             int toothNum = entry.getKey();
             List<List<Point>> tlaSegments = entry.getValue();
 
-            // 해당 치아 번호에 따른 CEJ와 Bone 교점 범위를 가져옴
             List<Point> cejIntersections = cejIntersectionsByTooth.get(toothNum);
             List<Point> boneIntersections = boneIntersectionsByTooth.get(toothNum);
 
@@ -345,51 +344,75 @@ public class CejBoneDistancesService {
                     double shiftX = (totalDy / length);
                     double shiftY = -(totalDx / length);
 
-                    Point lastCejIntersection = null;
-                    Point lastBoneIntersection = null;
-                    List<Point> finalShiftedTLA = new ArrayList<>();
-                    boolean foundLastIntersection = false;
+                    List<Point> finalShiftedTlaLeft = new ArrayList<>();
+                    List<Point> finalShiftedTlaRight = new ArrayList<>();
+                    Point lastCejIntersectionLeft = null;
+                    Point lastBoneIntersectionLeft = null;
+                    Point lastCejIntersectionRight = null;
+                    Point lastBoneIntersectionRight = null;
+                    boolean foundLeft = false;
+                    boolean foundRight = false;
 
-                    // TLA 평행 이동 반복
                     for (double offset = -50; offset <= 50; offset += 1) {
-                        List<Point> shiftedTLA = new ArrayList<>();
+                        List<Point> shiftedTlaLeft = new ArrayList<>();
+                        List<Point> shiftedTlaRight = new ArrayList<>();
+
                         for (Point p : tlaSegment) {
-                            Point shiftedPoint = new Point(p.x + offset * shiftX, p.y + offset * shiftY);
-                            if (shiftedPoint.x < minAllowedX || shiftedPoint.x > maxAllowedX) continue;
-                            shiftedTLA.add(shiftedPoint);
+                            Point leftShifted = new Point(p.x + offset * shiftX, p.y + offset * shiftY);
+                            Point rightShifted = new Point(p.x - offset * shiftX, p.y - offset * shiftY);
+
+                            if (leftShifted.x >= minAllowedX && leftShifted.x <= maxAllowedX) {
+                                shiftedTlaLeft.add(leftShifted);
+                            }
+                            if (rightShifted.x >= minAllowedX && rightShifted.x <= maxAllowedX) {
+                                shiftedTlaRight.add(rightShifted);
+                            }
                         }
 
-                        if (shiftedTLA.isEmpty()) continue;
+                        if (!shiftedTlaLeft.isEmpty()) {
+                            Point currentCejIntersectionLeft = findClosestIntersection(shiftedTlaLeft, cejIntersections);
+                            Point currentBoneIntersectionLeft = findClosestIntersection(shiftedTlaLeft, boneIntersections);
 
-                        Point currentCejIntersection = findClosestIntersection(shiftedTLA, cejIntersections);
-                        Point currentBoneIntersection = findClosestIntersection(shiftedTLA, boneIntersections);
+                            if (currentCejIntersectionLeft != null && currentBoneIntersectionLeft != null) {
+                                lastCejIntersectionLeft = currentCejIntersectionLeft;
+                                lastBoneIntersectionLeft = currentBoneIntersectionLeft;
+                                finalShiftedTlaLeft = new ArrayList<>(shiftedTlaLeft);
+                                foundLeft = true;
+                            } else if (foundLeft) break;
+                        }
 
-                        // CEJ와 Bone 모두와 교점이 있을 경우에만 갱신
-                        if (currentCejIntersection != null && currentBoneIntersection != null) {
-                            lastCejIntersection = currentCejIntersection;
-                            lastBoneIntersection = currentBoneIntersection;
-                            finalShiftedTLA = shiftedTLA;
-                            foundLastIntersection = true;
-                        } else {
-                            // 교점이 모두 없는 경우, 마지막 유효한 교점을 찾았으므로 반복 종료
-                            if (foundLastIntersection) break;
+                        if (!shiftedTlaRight.isEmpty()) {
+                            Point currentCejIntersectionRight = findClosestIntersection(shiftedTlaRight, cejIntersections);
+                            Point currentBoneIntersectionRight = findClosestIntersection(shiftedTlaRight, boneIntersections);
+
+                            if (currentCejIntersectionRight != null && currentBoneIntersectionRight != null) {
+                                lastCejIntersectionRight = currentCejIntersectionRight;
+                                lastBoneIntersectionRight = currentBoneIntersectionRight;
+                                finalShiftedTlaRight = new ArrayList<>(shiftedTlaRight);
+                                foundRight = true;
+                            } else if (foundRight) break;
                         }
                     }
 
-                    // 최종 평행 이동된 TLA 선을 combinedMask에 표시
-                    for (int i = 0; i < finalShiftedTLA.size() - 1; i++) {
-                        Imgproc.line(combinedMask, finalShiftedTLA.get(i), finalShiftedTLA.get(i + 1), new Scalar(255, 0, 0), 2);
-                    }
-
-                    // 마지막 교점을 Map에 저장 및 시각화
                     Map<String, Point> toothIntersections = new HashMap<>();
-                    if (lastCejIntersection != null) {
-                        toothIntersections.put("Last_CEJ_Intersection", lastCejIntersection);
-                        Imgproc.circle(combinedMask, lastCejIntersection, 5, new Scalar(0, 255, 0), -1); // 초록색 점
+                    if (foundLeft) {
+                        toothIntersections.put("Last_CEJ_Intersection_Left", lastCejIntersectionLeft);
+                        toothIntersections.put("Last_Bone_Intersection_Left", lastBoneIntersectionLeft);
+                        for (int i = 0; i < finalShiftedTlaLeft.size() - 1; i++) {
+                            Imgproc.line(combinedMask, finalShiftedTlaLeft.get(i), finalShiftedTlaLeft.get(i + 1), new Scalar(255, 0, 0), 2);
+                        }
+                        Imgproc.circle(combinedMask, lastCejIntersectionLeft, 5, new Scalar(0, 255, 0), -1);
+                        Imgproc.circle(combinedMask, lastBoneIntersectionLeft, 5, new Scalar(0, 0, 255), -1);
                     }
-                    if (lastBoneIntersection != null) {
-                        toothIntersections.put("Last_Bone_Intersection", lastBoneIntersection);
-                        Imgproc.circle(combinedMask, lastBoneIntersection, 5, new Scalar(0, 0, 255), -1); // 빨간색 점
+
+                    if (foundRight) {
+                        toothIntersections.put("Last_CEJ_Intersection_Right", lastCejIntersectionRight);
+                        toothIntersections.put("Last_Bone_Intersection_Right", lastBoneIntersectionRight);
+                        for (int i = 0; i < finalShiftedTlaRight.size() - 1; i++) {
+                            Imgproc.line(combinedMask, finalShiftedTlaRight.get(i), finalShiftedTlaRight.get(i + 1), new Scalar(255, 0, 0), 2);
+                        }
+                        Imgproc.circle(combinedMask, lastCejIntersectionRight, 5, new Scalar(0, 255, 0), -1);
+                        Imgproc.circle(combinedMask, lastBoneIntersectionRight, 5, new Scalar(0, 0, 255), -1);
                     }
 
                     if (!toothIntersections.isEmpty()) {
@@ -400,7 +423,6 @@ public class CejBoneDistancesService {
         }
         return intersectionsByTooth;
     }
-
 
 
 
