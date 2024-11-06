@@ -207,7 +207,9 @@ public class CejBoneDistancesService {
         drawCombinedMask();
         drawTlaMask(); // TLA Mask 그리기 추가
 
-        Map<Integer, Map<String, Point>> intersectionsByTooth = findAndMarkLastIntersections();
+// findAndMarkLastIntersections() 호출하여 결과 저장
+        Map<Integer, Map<String, List<Point>>> intersectionsByTooth = findAndMarkLastIntersections();
+
         printIntersectionsByTooth(intersectionsByTooth);
 
         // 작은 영역 제거 (최소 면적을 900으로 설정)
@@ -223,8 +225,8 @@ public class CejBoneDistancesService {
 
 
 
-    private Map<Integer, Map<String, Point>> findAndMarkLastIntersections() {
-        Map<Integer, Map<String, Point>> intersectionsByTooth = new HashMap<>();
+    private Map<Integer, Map<String, List<Point>>> findAndMarkLastIntersections() {
+        Map<Integer, Map<String, List<Point>>> intersectionsByTooth = new HashMap<>();
 
         for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
             int toothNum = entry.getKey();
@@ -232,7 +234,7 @@ public class CejBoneDistancesService {
 
             List<Point> cejIntersections = cejIntersectionsByTooth.get(toothNum);
             List<Point> boneIntersections = boneIntersectionsByTooth.get(toothNum);
-            List<Point> toothBoundary = toothBoundaries.get(toothNum); // 바운딩 박스 가져오기
+            List<Point> toothBoundary = toothBoundaries.get(toothNum);
 
             if (cejIntersections == null || boneIntersections == null || toothBoundary == null) continue;
 
@@ -244,109 +246,87 @@ public class CejBoneDistancesService {
                     double shiftX = -dy / length;
                     double shiftY = dx / length;
 
+                    // Left and right shifted TLA lines
                     List<Point> finalShiftedTlaLeft = new ArrayList<>();
                     List<Point> finalShiftedTlaRight = new ArrayList<>();
-                    Point lastCejIntersectionLeft = null;
-                    Point lastBoneIntersectionLeft = null;
-                    Point lastCejIntersectionRight = null;
-                    Point lastBoneIntersectionRight = null;
                     boolean foundLeft = false;
                     boolean foundRight = false;
 
-                    // TLA 선을 좌우로 평행 이동 및 연장
+                    // Generate shifted TLA and find intersections for both sides
                     for (double offset = -50; offset <= 50; offset += 0.5) {
-                        List<Point> shiftedTlaLeft = new ArrayList<>();
-                        List<Point> shiftedTlaRight = new ArrayList<>();
+                        List<Point> shiftedTlaLeft = shiftTla(tlaSegment, offset * shiftX, offset * shiftY);
+                        List<Point> shiftedTlaRight = shiftTla(tlaSegment, -offset * shiftX, -offset * shiftY);
 
-                        for (Point p : tlaSegment) {
-                            Point leftShifted = new Point(p.x + offset * shiftX, p.y + offset * shiftY);
-                            Point rightShifted = new Point(p.x - offset * shiftX, p.y - offset * shiftY);
-                            shiftedTlaLeft.add(leftShifted);
-                            shiftedTlaRight.add(rightShifted);
+                        extendTlaSegment(shiftedTlaLeft, dx, dy, length);
+                        extendTlaSegment(shiftedTlaRight, dx, dy, length);
+
+                        if (!shiftedTlaLeft.isEmpty() && !shiftedTlaRight.isEmpty()) {
+                            // Check and store intersections for the left shifted TLA
+                            if (!foundLeft) {
+                                List<Point> intersectionsLeft = findBoundingBoxIntersections(shiftedTlaLeft, toothBoundary);
+                                if (!intersectionsLeft.isEmpty()) {
+                                    intersectionsByTooth
+                                            .computeIfAbsent(toothNum, k -> new HashMap<>())
+                                            .computeIfAbsent("Intersection_1", k -> new ArrayList<>())
+                                            .addAll(intersectionsLeft);
+                                    foundLeft = true;
+                                }
+                            }
+
+                            // Check and store intersections for the right shifted TLA
+                            if (!foundRight) {
+                                List<Point> intersectionsRight = findBoundingBoxIntersections(shiftedTlaRight, toothBoundary);
+                                if (!intersectionsRight.isEmpty()) {
+                                    intersectionsByTooth
+                                            .computeIfAbsent(toothNum, k -> new HashMap<>())
+                                            .computeIfAbsent("Intersection_2", k -> new ArrayList<>())
+                                            .addAll(intersectionsRight);
+                                    foundRight = true;
+                                }
+                            }
+
+                            if (foundLeft && foundRight) break;
                         }
-
-                        // TLA 연장 (양쪽으로 길이 연장)
-                        Point firstLeft = shiftedTlaLeft.get(0);
-                        Point lastLeft = shiftedTlaLeft.get(shiftedTlaLeft.size() - 1);
-                        Point extendedFirstLeft = new Point(firstLeft.x - dx * 50 / length, firstLeft.y - dy * 50 / length);
-                        Point extendedLastLeft = new Point(lastLeft.x + dx * 50 / length, lastLeft.y + dy * 50 / length);
-                        shiftedTlaLeft.add(0, extendedFirstLeft);
-                        shiftedTlaLeft.add(extendedLastLeft);
-
-                        Point firstRight = shiftedTlaRight.get(0);
-                        Point lastRight = shiftedTlaRight.get(shiftedTlaRight.size() - 1);
-                        Point extendedFirstRight = new Point(firstRight.x - dx * 50 / length, firstRight.y - dy * 50 / length);
-                        Point extendedLastRight = new Point(lastRight.x + dx * 50 / length, lastRight.y + dy * 50 / length);
-                        shiftedTlaRight.add(0, extendedFirstRight);
-                        shiftedTlaRight.add(extendedLastRight);
-
-                        // 교점 찾기
-                        if (!shiftedTlaLeft.isEmpty()) {
-                            Point currentCejIntersectionLeft = findClosestIntersection(shiftedTlaLeft, cejIntersections);
-                            Point currentBoneIntersectionLeft = findClosestIntersection(shiftedTlaLeft, boneIntersections);
-
-                            if (currentCejIntersectionLeft != null && currentBoneIntersectionLeft != null) {
-                                lastCejIntersectionLeft = currentCejIntersectionLeft;
-                                lastBoneIntersectionLeft = currentBoneIntersectionLeft;
-                                finalShiftedTlaLeft = new ArrayList<>(shiftedTlaLeft);
-                                foundLeft = true;
-                            } else if (foundLeft) break;
-                        }
-
-                        if (!shiftedTlaRight.isEmpty()) {
-                            Point currentCejIntersectionRight = findClosestIntersection(shiftedTlaRight, cejIntersections);
-                            Point currentBoneIntersectionRight = findClosestIntersection(shiftedTlaRight, boneIntersections);
-
-                            if (currentCejIntersectionRight != null && currentBoneIntersectionRight != null) {
-                                lastCejIntersectionRight = currentCejIntersectionRight;
-                                lastBoneIntersectionRight = currentBoneIntersectionRight;
-                                finalShiftedTlaRight = new ArrayList<>(shiftedTlaRight);
-                                foundRight = true;
-                            } else if (foundRight) break;
-                        }
-                    }
-
-                    Map<String, Point> toothIntersections = new HashMap<>();
-                    if (foundLeft) {
-                        toothIntersections.put("Last_CEJ_Intersection_Left", lastCejIntersectionLeft);
-                        toothIntersections.put("Last_Bone_Intersection_Left", lastBoneIntersectionLeft);
-                        for (int i = 0; i < finalShiftedTlaLeft.size() - 1; i++) {
-                            Imgproc.line(combinedMask, finalShiftedTlaLeft.get(i), finalShiftedTlaLeft.get(i + 1), new Scalar(255, 0, 0), 2);
-                        }
-                        Imgproc.circle(combinedMask, lastCejIntersectionLeft, 5, new Scalar(0, 255, 0), -1);
-                        Imgproc.circle(combinedMask, lastBoneIntersectionLeft, 5, new Scalar(0, 0, 255), -1);
-                    }
-
-                    if (foundRight) {
-                        toothIntersections.put("Last_CEJ_Intersection_Right", lastCejIntersectionRight);
-                        toothIntersections.put("Last_Bone_Intersection_Right", lastBoneIntersectionRight);
-                        for (int i = 0; i < finalShiftedTlaRight.size() - 1; i++) {
-                            Imgproc.line(combinedMask, finalShiftedTlaRight.get(i), finalShiftedTlaRight.get(i + 1), new Scalar(255, 0, 0), 2);
-                        }
-                        Imgproc.circle(combinedMask, lastCejIntersectionRight, 5, new Scalar(0, 255, 0), -1);
-                        Imgproc.circle(combinedMask, lastBoneIntersectionRight, 5, new Scalar(0, 0, 255), -1);
-                    }
-
-                    // 바운딩 박스와 TLA 교점 찾기
-
-                    List<Point> boundingBoxIntersectionsLeft = findBoundingBoxIntersections(finalShiftedTlaLeft, toothBoundary, toothNum);
-                    List<Point> boundingBoxIntersectionsRight = findBoundingBoxIntersections(finalShiftedTlaRight, toothBoundary, toothNum);
-
-
-                    for (Point intersection : boundingBoxIntersectionsLeft) {
-                        Imgproc.circle(combinedMask, intersection, 5, new Scalar(255, 255, 0), -1); // 노란색으로 왼쪽 교점 표시
-                    }
-                    for (Point intersection : boundingBoxIntersectionsRight) {
-                        Imgproc.circle(combinedMask, intersection, 5, new Scalar(255, 255, 0), -1); // 노란색으로 오른쪽 교점 표시
-                    }
-
-                    if (!toothIntersections.isEmpty()) {
-                        intersectionsByTooth.put(toothNum, toothIntersections);
                     }
                 }
             }
         }
         return intersectionsByTooth;
+    }
+
+    // Helper to shift TLA segment
+    private List<Point> shiftTla(List<Point> tlaSegment, double shiftX, double shiftY) {
+        List<Point> shiftedTla = new ArrayList<>();
+        for (Point p : tlaSegment) {
+            shiftedTla.add(new Point(p.x + shiftX, p.y + shiftY));
+        }
+        return shiftedTla;
+    }
+
+    // Helper to extend TLA segment
+    private void extendTlaSegment(List<Point> shiftedTla, double dx, double dy, double length) {
+        Point first = shiftedTla.get(0);
+        Point last = shiftedTla.get(shiftedTla.size() - 1);
+        Point extendedFirst = new Point(first.x - dx * 50 / length, first.y - dy * 50 / length);
+        Point extendedLast = new Point(last.x + dx * 50 / length, last.y + dy * 50 / length);
+        shiftedTla.add(0, extendedFirst);
+        shiftedTla.add(extendedLast);
+    }
+
+    // Finding bounding box intersections
+    private List<Point> findBoundingBoxIntersections(List<Point> shiftedTla, List<Point> boundingBox) {
+        List<Point> intersections = new ArrayList<>();
+        for (int i = 0; i < shiftedTla.size() - 1; i++) {
+            Point p1 = shiftedTla.get(i);
+            Point p2 = shiftedTla.get(i + 1);
+            for (int j = 0; j < boundingBox.size(); j++) {
+                Point q1 = boundingBox.get(j);
+                Point q2 = boundingBox.get((j + 1) % boundingBox.size());
+                Point intersection = findExactIntersection(p1, p2, q1, q2);
+                if (intersection != null) intersections.add(intersection);
+            }
+        }
+        return intersections;
     }
 
 
@@ -474,20 +454,27 @@ public class CejBoneDistancesService {
                 && r.y >= Math.min(p.y, q.y) && r.y <= Math.max(p.y, q.y);
     }
 
-
-    private static void printIntersectionsByTooth(Map<Integer, Map<String, Point>> intersectionsByTooth) {
-        for (Map.Entry<Integer, Map<String, Point>> entry : intersectionsByTooth.entrySet()) {
+    private static void printIntersectionsByTooth(Map<Integer, Map<String, List<Point>>> intersectionsByTooth) {
+        for (Map.Entry<Integer, Map<String, List<Point>>> entry : intersectionsByTooth.entrySet()) {
             int toothNum = entry.getKey();
-            Map<String, Point> intersections = entry.getValue();
+            Map<String, List<Point>> intersections = entry.getValue();
 
-            //TODO:- 테스트용 (추후 삭제) print
-            System.out.println("치아 번호: " + toothNum + " - 교차점 좌표:");
-            for (Map.Entry<String, Point> intersectionEntry : intersections.entrySet()) {
-                System.out.println("    " + intersectionEntry.getKey() + ": " + intersectionEntry.getValue());
+            System.out.println("치아 번호: " + toothNum + " - TLA와 Bounding Box 교차점 좌표:");
+
+            for (Map.Entry<String, List<Point>> intersectionEntry : intersections.entrySet()) {
+                String intersectionKey = intersectionEntry.getKey();
+                List<Point> points = intersectionEntry.getValue();
+
+                System.out.print("    " + intersectionKey + ": { ");
+                for (int i = 0; i < points.size(); i++) {
+                    Point point = points.get(i);
+                    System.out.printf("{%.2f, %.2f}", point.x, point.y);
+                    if (i < points.size() - 1) System.out.print(", ");
+                }
+                System.out.println(" }");
             }
         }
     }
-
 
     // verticalLength :- 저장된 최대 바운딩 박스의 세로 길이
     private void drawCombinedMask() {
