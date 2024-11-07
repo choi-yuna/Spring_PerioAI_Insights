@@ -27,6 +27,10 @@ public class CejBoneDistancesService {
     private List<Integer> tlaSize;
     private List<List<Point>> bonePoints;
 
+    // 교점 저장
+    private Map<Integer, Map<String, Point>> intersectionsByTooth;
+    private Map<Integer, Map<String, List<Point>>> boxIntersections;
+
     private List<Scalar> boneColor;
     private List<Integer> boneSize;
 
@@ -91,6 +95,9 @@ public class CejBoneDistancesService {
         boneIntersectionsByTooth = new HashMap<>();
         tlaAngleByTooth = new HashMap<>();
         toothBoundaries = new HashMap<>();
+
+        intersectionsByTooth = new HashMap<>();
+        boxIntersections = new HashMap<>();
         maxBoundingBoxMap.clear();  // 바운딩 박스 정보 초기화
         allPointsByTooth.clear();   // 치아 포인트 정보 초기화
         initializeMasks();
@@ -319,9 +326,6 @@ public class CejBoneDistancesService {
 
 
     private Map<Integer, Map<String, Point>> findAndMarkLastIntersections() {
-        Map<Integer, Map<String, Point>> intersectionsByTooth = new HashMap<>();
-        Map<Integer, Map<String, List<Point>>> boxIntersections = new HashMap<>(); // 추가된 맵
-
         for (Map.Entry<Integer, List<List<Point>>> entry : tlaPointsByNum.entrySet()) {
             int toothNum = entry.getKey();
             List<List<Point>> tlaSegments = entry.getValue();
@@ -330,7 +334,9 @@ public class CejBoneDistancesService {
             List<Point> boneIntersections = boneIntersectionsByTooth.get(toothNum);
             List<Point> toothBoundary = toothBoundaries.get(toothNum);
 
-            if (cejIntersections == null || boneIntersections == null || toothBoundary == null) continue;
+            if (cejIntersections == null || boneIntersections == null || toothBoundary == null) {
+            continue;
+            }
 
             // 바운딩 박스의 중심 Y 좌표 계산
             double boundingBoxCenterY = toothBoundary.stream().mapToDouble(point -> point.y).average().orElse(0);
@@ -932,6 +938,7 @@ public class CejBoneDistancesService {
     private void drawAndMapCejMask() {
         // CEJ 교차점 저장을 위한 Map 초기화
         cejIntersectionsByTooth.clear();
+        filteredCejPointsByTooth.clear();
 
         for (int i = 0; i < cejPoints.size(); i++) {
             List<Point> points = cejPoints.get(i);
@@ -970,6 +977,10 @@ public class CejBoneDistancesService {
                         validCejPoints.add(cejPoint);
                     }
                 }
+                if (!validCejPoints.isEmpty()) {
+                    filteredCejPointsByTooth.put(toothNum, new ArrayList<>(validCejPoints));
+                }
+
 
                 if (validCejPoints.size() >= 2) {
                     // CEJ와 치아 폴리곤의 교차점 찾기
@@ -1016,6 +1027,7 @@ public class CejBoneDistancesService {
     private void drawAndMapBoneMask() {
         // Bone 교차점 저장을 위한 Map 초기화
         boneIntersectionsByTooth.clear();
+        filteredBonePointsByTooth.clear();
 
         for (int i = 0; i < bonePoints.size(); i++) {
             List<Point> points = bonePoints.get(i);
@@ -1048,6 +1060,9 @@ public class CejBoneDistancesService {
                             bonePoint.y >= minY && bonePoint.y <= maxY) {
                         validBonePoints.add(bonePoint);
                     }
+                }
+                if (!validBonePoints.isEmpty()) {
+                    filteredBonePointsByTooth.put(toothNum, new ArrayList<>(validBonePoints));
                 }
 
                 if (validBonePoints.size() >= 2) {
