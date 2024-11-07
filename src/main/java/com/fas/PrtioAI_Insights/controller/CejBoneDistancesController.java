@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -64,7 +65,7 @@ public class CejBoneDistancesController {
 
             // JSON 파일 경로를 통해 정상 치아 번호를 필터링하고 조정된 데이터를 생성
             System.out.println("Calculating adjusted distances based on JSON file content...");
-            Map<Integer, Map<String, Object>> adjustedData = cejBoneDistancesService.calculateDistances(jsonFilePath.toString());
+            Map<Integer, Map<String, List<Double>>> adjustedData = cejBoneDistancesService.calculateDistances(jsonFilePath.toString());
             System.out.println("Adjusted data generated successfully.");
 
             return ResponseEntity.ok(adjustedData);

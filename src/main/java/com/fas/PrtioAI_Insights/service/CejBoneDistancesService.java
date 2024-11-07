@@ -52,6 +52,12 @@ public class CejBoneDistancesService {
 
     private Map<Integer, List<Point>> toothBoundaries;
 
+    // 각 치아별 4가지 거리 정보를 저장할 전역 맵
+    private Map<Integer, Map<String, Double>> distancesByTooth = new HashMap<>();
+
+    // 상악 치아 범위
+    private final Set<Integer> MAXILLARY_TEETH = new HashSet<>(Arrays.asList(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28));
+
 
     private Mat combinedMask, cejMask, mappedCejMask, tlaMask, boneMask, cejMappedOnlyMask, boneMappedOnlyMask;
 
@@ -1243,15 +1249,10 @@ public class CejBoneDistancesService {
     }
 
 
-        // 각 치아별 4가지 거리 정보를 저장할 전역 맵
-        private Map<Integer, Map<String, Double>> distancesByTooth = new HashMap<>();
-
-        // 상악 치아 범위
-        private final Set<Integer> MAXILLARY_TEETH = new HashSet<>(Arrays.asList(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28));
     // 거리 계산 함수
-    public Map<Integer, Map<String, Object>> calculateDistances(String jsonFilePath) {
+    public Map<Integer, Map<String, List<Double>>> calculateDistances(String jsonFilePath) {
         Set<Integer> healthyTeeth = filterTeethFromJson(jsonFilePath);
-        Map<Integer, Map<String, Object>> result = new HashMap<>();
+        Map<Integer, Map<String, List<Double>>> result = new HashMap<>();
 
         for (Map.Entry<Integer, Map<String, Point>> entry : intersectionsByTooth.entrySet()) {
             int toothNum = entry.getKey();
@@ -1287,28 +1288,25 @@ public class CejBoneDistancesService {
             }
 
             // 결과 맵에 거리 값 저장
-            Map<String, Object> distances = new HashMap<>();
-            distances.put("leftCejDistance", leftCejDistance);
-            distances.put("leftBoneDistance", leftBoneDistance);
-            distances.put("rightCejDistance", rightCejDistance);
-            distances.put("rightBoneDistance", rightBoneDistance);
+            Map<String, List<Double>> distances = new HashMap<>();
+            distances.put("adjustedCejPoints", Arrays.asList(leftCejDistance, rightCejDistance));
+            distances.put("adjustedBonePoints", Arrays.asList(leftBoneDistance, rightBoneDistance));
 
             // 정상 치아인지 확인하고 결과에 추가
             if (healthyTeeth.contains(toothNum)) {
                 result.put(toothNum, distances);
             } else {
                 // 비정상 치아 번호인 경우 null 값으로 설정
-                Map<String, Object> nullData = new HashMap<>();
-                nullData.put("leftCejDistance", null);
-                nullData.put("leftBoneDistance", null);
-                nullData.put("rightCejDistance", null);
-                nullData.put("rightBoneDistance", null);
+                Map<String, List<Double>> nullData = new HashMap<>();
+                nullData.put("cej", Arrays.asList(null, null));
+                nullData.put("bone", Arrays.asList(null, null));
                 result.put(toothNum, nullData);
             }
         }
 
         return result;
     }
+
 
 
 
