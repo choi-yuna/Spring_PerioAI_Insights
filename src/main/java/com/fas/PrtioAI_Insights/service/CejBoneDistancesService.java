@@ -384,6 +384,32 @@ public class CejBoneDistancesService {
                     boolean foundLeft = false;
                     boolean foundRight = false;
 
+                    // 기존 TLA를 연장하여 바운딩 박스와의 교점 찾기
+                    List<Point> extendedTlaSegment = new ArrayList<>(tlaSegment);
+                    Point firstTlaPoint = tlaSegment.get(0);
+                    Point lastTlaPoint = tlaSegment.get(tlaSegment.size() - 1);
+                    Point extendedFirstTlaPoint = new Point(firstTlaPoint.x - dx * 50 / length, firstTlaPoint.y - dy * 50 / length);
+                    Point extendedLastTlaPoint = new Point(lastTlaPoint.x + dx * 50 / length, lastTlaPoint.y + dy * 50 / length);
+                    extendedTlaSegment.add(0, extendedFirstTlaPoint);
+                    extendedTlaSegment.add(extendedLastTlaPoint);
+
+                    // 기존 TLA와 바운딩 박스 교점 찾기 및 시각화
+                    List<Point> originalTlaIntersections = findBoundingBoxIntersections(extendedTlaSegment, toothBoundary);
+                    for (Point intersection : originalTlaIntersections) {
+                        Imgproc.circle(combinedMask, intersection, 5, new Scalar(255, 0, 255), -1); // 시각화: 기존 TLA 교점
+                    }
+
+                    // 기존 TLA와 CEJ 및 치조골 교점 찾기
+                    Point cejIntersectionCenter = findClosestIntersection(extendedTlaSegment, cejIntersections);
+                    Point boneIntersectionCenter = findClosestIntersection(extendedTlaSegment, boneIntersections);
+
+                    if (cejIntersectionCenter != null) {
+                        Imgproc.circle(combinedMask, cejIntersectionCenter, 5, new Scalar(0, 255, 0), -1); // 시각화: 중앙 CEJ 교점
+                    }
+                    if (boneIntersectionCenter != null) {
+                        Imgproc.circle(combinedMask, boneIntersectionCenter, 5, new Scalar(0, 0, 255), -1); // 시각화: 중앙 Bone 교점
+                    }
+
                     // TLA 선을 좌우로 평행 이동 및 연장
                     for (double offset = -50; offset <= 50; offset += 0.5) {
                         List<Point> shiftedTlaLeft = new ArrayList<>();
@@ -436,8 +462,14 @@ public class CejBoneDistancesService {
                             } else if (foundRight) break;
                         }
                     }
-
                     Map<String, Point> toothIntersections = new HashMap<>();
+                    if (cejIntersectionCenter != null) {
+                        toothIntersections.put("Last_CEJ_Intersection_Center", cejIntersectionCenter);
+                    }
+                    if (boneIntersectionCenter != null) {
+                        toothIntersections.put("Last_Bone_Intersection_Center", boneIntersectionCenter);
+                    }
+
                     if (foundLeft) {
                         toothIntersections.put("Last_CEJ_Intersection_Left", lastCejIntersectionLeft);
                         toothIntersections.put("Last_Bone_Intersection_Left", lastBoneIntersectionLeft);
@@ -468,6 +500,11 @@ public class CejBoneDistancesService {
                         String key = intersection.y < boundingBoxCenterY ? "박스 상단 교점" : "박스 하단 교점";
                         currentBoxIntersections.computeIfAbsent(key, k -> new ArrayList<>()).add(intersection);
                         Imgproc.circle(combinedMask, intersection, 5, new Scalar(0, 255, 255), -1); // 시각화: 상단/하단 교점 표시
+                    }
+
+                    for (Point intersection : originalTlaIntersections) {
+                        String key = intersection.y < boundingBoxCenterY ? "박스 상단 교점" : "박스 하단 교점";
+                        currentBoxIntersections.computeIfAbsent(key, k -> new ArrayList<>()).add(intersection);
                     }
                     for (Point intersection : boundingBoxIntersectionsRight) {
                         String key = intersection.y < boundingBoxCenterY ? "박스 상단 교점" : "박스 하단 교점";
@@ -1271,26 +1308,30 @@ public class CejBoneDistancesService {
             if (boxPoints.isEmpty()) continue;
 
             // 치아의 왼쪽과 오른쪽 교점 및 박스 교점으로 거리 계산
-            double leftCejDistance, leftBoneDistance, rightCejDistance, rightBoneDistance;
-            if (boxPoints.size() == 1) {
+            double leftCejDistance, leftBoneDistance, rightCejDistance, rightBoneDistance,CenterCejDistance,CenterBoneDistance;
+            if (boxPoints.size() <= 2 && boxPoints.size() !=0) {
                 // 박스 교점이 한 개일 경우, 해당 좌표로만 거리 계산
                 Point singleBoxPoint = boxPoints.get(0);
                 leftCejDistance = calculatePointDistance(singleBoxPoint, toothIntersections.get("Last_CEJ_Intersection_Left"));
                 leftBoneDistance = calculatePointDistance(singleBoxPoint, toothIntersections.get("Last_Bone_Intersection_Left"));
+                CenterCejDistance = calculatePointDistance(singleBoxPoint, toothIntersections.get("Last_CEJ_Intersection_Center"));
+                CenterBoneDistance = calculatePointDistance(singleBoxPoint, toothIntersections.get("Last_Bone_Intersection_Center"));
                 rightCejDistance = calculatePointDistance(singleBoxPoint, toothIntersections.get("Last_CEJ_Intersection_Right"));
                 rightBoneDistance = calculatePointDistance(singleBoxPoint, toothIntersections.get("Last_Bone_Intersection_Right"));
             } else {
                 // 박스 교점이 두 개 이상일 경우, 좌우 교점으로 거리 계산
                 leftCejDistance = calculatePointDistance(boxPoints.get(0), toothIntersections.get("Last_CEJ_Intersection_Left"));
                 leftBoneDistance = calculatePointDistance(boxPoints.get(0), toothIntersections.get("Last_Bone_Intersection_Left"));
-                rightCejDistance = calculatePointDistance(boxPoints.get(1), toothIntersections.get("Last_CEJ_Intersection_Right"));
-                rightBoneDistance = calculatePointDistance(boxPoints.get(1), toothIntersections.get("Last_Bone_Intersection_Right"));
+                CenterCejDistance = calculatePointDistance(boxPoints.get(1), toothIntersections.get("Last_CEJ_Intersection_Center"));
+                CenterBoneDistance = calculatePointDistance(boxPoints.get(1), toothIntersections.get("Last_Bone_Intersection_Center"));
+                rightCejDistance = calculatePointDistance(boxPoints.get(2), toothIntersections.get("Last_CEJ_Intersection_Right"));
+                rightBoneDistance = calculatePointDistance(boxPoints.get(2), toothIntersections.get("Last_Bone_Intersection_Right"));
             }
 
             // 결과 맵에 거리 값 저장
             Map<String, List<Double>> distances = new HashMap<>();
-            distances.put("adjustedCejPoints", Arrays.asList(leftCejDistance, rightCejDistance));
-            distances.put("adjustedBonePoints", Arrays.asList(leftBoneDistance, rightBoneDistance));
+            distances.put("adjustedCejPoints", Arrays.asList(leftCejDistance,CenterCejDistance ,rightCejDistance));
+            distances.put("adjustedBonePoints", Arrays.asList(leftBoneDistance, CenterBoneDistance,rightBoneDistance));
 
             // 정상 치아인지 확인하고 결과에 추가
             if (healthyTeeth.contains(toothNum)) {
