@@ -82,26 +82,6 @@ public class CejBoneDistancesService {
     }
 
 
-    public static void printFormattedDistances(Map<Integer, Map<String, Double>> distances) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Tooth Distances:\n");
-
-        for (Map.Entry<Integer, Map<String, Double>> entry : distances.entrySet()) {
-            Integer toothNum = entry.getKey();
-            Map<String, Double> distanceData = entry.getValue();
-
-            sb.append("Tooth Number: ").append(toothNum).append("\n");
-            for (Map.Entry<String, Double> distanceEntry : distanceData.entrySet()) {
-                sb.append("    ").append(distanceEntry.getKey()).append(": ")
-                        .append(distanceEntry.getValue()).append("\n");
-            }
-            sb.append("\n");  // 각 치아 번호 간 간격 추가
-        }
-
-        System.out.println(sb.toString());
-    }
-
-
     private void initialize() {
         teethNum = new ArrayList<>();
         teethPoints = new ArrayList<>();
@@ -356,8 +336,8 @@ public class CejBoneDistancesService {
             int toothNum = entry.getKey();
             List<List<Point>> tlaSegments = entry.getValue();
 
-            List<Point> cejIntersections = cejIntersectionsByTooth.get(toothNum);
-            List<Point> boneIntersections = boneIntersectionsByTooth.get(toothNum);
+            List<Point> cejIntersections = filteredCejPointsByTooth.get(toothNum);
+            List<Point> boneIntersections = filteredBonePointsByTooth.get(toothNum);
             List<Point> toothBoundary = toothBoundaries.get(toothNum);
 
             if (cejIntersections == null || boneIntersections == null || toothBoundary == null) {
@@ -619,7 +599,7 @@ public class CejBoneDistancesService {
         double c2 = a2 * q1.x + b2 * q1.y;
 
         double delta = a1 * b2 - a2 * b1;
-        if (Math.abs(delta) < 1e-6) return null; // 두 선이 평행할 경우 교점 없음
+        if (Math.abs(delta) < 1e-6) return null; // 두 선이 평행한 경우 교점 없음
 
         double x = (b2 * c1 - b1 * c2) / delta;
         double y = (a1 * c2 - a2 * c1) / delta;
@@ -1051,85 +1031,72 @@ public class CejBoneDistancesService {
             List<Point> points = cejPoints.get(i);
             if (points.size() < 3) continue;
 
-            MatOfPoint pts = new MatOfPoint();
-            pts.fromList(points);
-            int thickness = cejSize.get(i);
+            // CEJ 색상 필터링 추가
+            Scalar cejColors = cejColor.get(i);
+            if (cejColors.equals(new Scalar(1, 1, 255, 255))) {  // 흰색 선
+                MatOfPoint pts = new MatOfPoint();
+                pts.fromList(points);
+                int thickness = cejSize.get(i);
 
-            double area = Imgproc.contourArea(pts);
-            if (area < 300 || thickness > 2) continue;
+                double area = Imgproc.contourArea(pts);
+                if (area < 300 || thickness > 2) continue;
 
-            for (int j = 0; j < teethPoints.size(); j++) {
-                int toothNum = teethNum.get(j);
-                if (toothNum < 11 || toothNum > 48) continue;
+                for (int j = 0; j < teethPoints.size(); j++) {
+                    int toothNum = teethNum.get(j);
+                    if (toothNum < 11 || toothNum > 48) continue;
 
-                List<Point> toothPoints = teethPoints.get(j);
-                if (toothPoints.size() < 3) continue;
+                    List<Point> toothPoints = teethPoints.get(j);
+                    if (toothPoints.size() < 3) continue;
 
-                MatOfPoint toothPts = new MatOfPoint();
-                toothPts.fromList(toothPoints);
+                    MatOfPoint toothPts = new MatOfPoint();
+                    toothPts.fromList(toothPoints);
 
-                double toothArea = Imgproc.contourArea(toothPts);
-                if (toothArea < 900) continue;
+                    double toothArea = Imgproc.contourArea(toothPts);
+                    if (toothArea < 900) continue;
 
-                Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
+                    // CEJ와 치아 폴리곤의 교차점 찾기
+                    List<Point> intersections = findIntersectionsBetweenCEJAndTooth(points, toothPoints);
+                    List<Point> filteredCejPoints = new ArrayList<>();
 
-                int minY = toothBoundingBox.y - 50;
-                int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
+                    if (!intersections.isEmpty()) {
+                        // 교차점 중 가장 먼저 맞닿는 부분과 마지막 맞닿는 부분 찾기
+                        int firstIntersectionIndex = points.indexOf(intersections.get(0));
+                        int lastIntersectionIndex = points.indexOf(intersections.get(intersections.size() - 1));
 
-                // 유효한 CEJ 좌표 필터링
-                List<Point> validCejPoints = new ArrayList<>();
-                for (Point cejPoint : points) {
-                    if (toothBoundingBox.contains(cejPoint) &&
-                            cejPoint.y >= minY && cejPoint.y <= maxY) {
-                        validCejPoints.add(cejPoint);
+                        // 인덱스가 유효한지 확인
+                        if (firstIntersectionIndex >= 0 && lastIntersectionIndex >= firstIntersectionIndex) {
+                            filteredCejPoints.addAll(points.subList(firstIntersectionIndex, lastIntersectionIndex + 1));
+                        }
+                    }
+
+                    // 교차점이 없거나 추가적으로 내부에 포함된 점을 확인하여 추가
+                    for (Point cejPoint : points) {
+                        if (Imgproc.pointPolygonTest(new MatOfPoint2f(toothPoints.toArray(new Point[0])), cejPoint, false) >= 0) {
+                            if (!filteredCejPoints.contains(cejPoint)) {
+                                filteredCejPoints.add(cejPoint);
+                            }
+                        }
+                    }
+
+                    if (!filteredCejPoints.isEmpty()) {
+                        filteredCejPointsByTooth.put(toothNum, filteredCejPoints);
+                        System.out.println("Tooth Number: " + toothNum + " - Filtered CEJ Points:");
+                        for (Point p : filteredCejPoints) {
+                            System.out.println("    " + p);
+                        }
+
+                        // CEJ 라인 그리기 - 흰색 선
+                        MatOfPoint cejPts = new MatOfPoint();
+                        cejPts.fromList(filteredCejPoints);
+                        Imgproc.polylines(cejMappedOnlyMask, List.of(cejPts), false, new Scalar(255, 255, 255), thickness);
                     }
                 }
-                if (!validCejPoints.isEmpty()) {
-                    filteredCejPointsByTooth.put(toothNum, new ArrayList<>(validCejPoints));
-                }
-
-
-                if (validCejPoints.size() >= 2) {
-                    // CEJ와 치아 폴리곤의 교차점 찾기
-                    List<Point> intersections = findIntersectionsBetweenCEJAndTooth(validCejPoints, toothPoints);
-
-                    // 치아 폴리곤 그리기 - 흰색
-                    Imgproc.polylines(cejMappedOnlyMask, List.of(toothPts), true, new Scalar(255, 255, 255), 2);
-                    Imgproc.fillPoly(cejMappedOnlyMask, List.of(toothPts), new Scalar(255, 255, 255));
-
-                    // CEJ 라인 그리기 - 빨간색
-                    MatOfPoint cejPts = new MatOfPoint();
-                    cejPts.fromList(validCejPoints);
-                    Imgproc.polylines(cejMappedOnlyMask, List.of(cejPts), false, new Scalar(0, 0, 255), thickness);
-
-                    // 교차점을 cejIntersectionsByTooth Map에 저장
-                    cejIntersectionsByTooth.putIfAbsent(toothNum, new ArrayList<>());
-                    cejIntersectionsByTooth.get(toothNum).addAll(intersections);
-                }
-            }
-        }
-
-        // 교차점을 mask에 표시
-        for (Map.Entry<Integer, List<Point>> entry : cejIntersectionsByTooth.entrySet()) {
-            int toothNum = entry.getKey();
-            List<Point> toothIntersections = entry.getValue();
-
-            List<Point> minMaxIntersections = getMinMaxXIntersections(toothIntersections);
-
-            System.out.println("Tooth Number: " + toothNum);
-            if (!minMaxIntersections.isEmpty()) {
-                System.out.println("Min X Intersection: " + minMaxIntersections.get(0));
-                if (minMaxIntersections.size() > 1) {
-                    System.out.println("Max X Intersection: " + minMaxIntersections.get(1));
-                }
-
-                // 교차점을 mask에 표시
-                for (Point intersection : minMaxIntersections) {
-                    Imgproc.circle(cejMappedOnlyMask, intersection, 5, new Scalar(0, 0, 255), -1);
-                }
+            } else if (cejColor.equals(new Scalar(0, 0, 0, 0))) {  // 검은색 선
+                // 필요 시 검은색 선에 대한 로직 추가
             }
         }
     }
+
 
     private void drawAndMapBoneMask() {
         // Bone 교차점 저장을 위한 Map 초기화
@@ -1145,7 +1112,7 @@ public class CejBoneDistancesService {
             int thickness = boneSize.get(i);
 
             double area = Imgproc.contourArea(pts);
-            if (area < 300 || thickness > 2) continue;
+            if (area < 200 || thickness > 3) continue;
 
             for (Map.Entry<Integer, List<Point>> entry : allPointsByTooth.entrySet()) {
                 int toothNum = entry.getKey();
@@ -1153,67 +1120,37 @@ public class CejBoneDistancesService {
 
                 if (filteredToothPoints == null || filteredToothPoints.size() < 3) continue;
 
-                MatOfPoint toothPts = new MatOfPoint();
-                toothPts.fromList(filteredToothPoints);
-                Rect toothBoundingBox = Imgproc.boundingRect(toothPts);
+                // Bone과 치아 폴리곤의 교차점 찾기
+                List<Point> intersections = findIntersectionsBetweenBoneAndTooth(points, filteredToothPoints);
+                if (!intersections.isEmpty()) {
+                    // 가장 작은 X와 큰 X를 기준으로 유효한 Bone 좌표를 필터링
+                    Point minXPoint = intersections.stream().min(Comparator.comparingDouble(p -> p.x)).orElse(null);
+                    Point maxXPoint = intersections.stream().max(Comparator.comparingDouble(p -> p.x)).orElse(null);
 
-                int minY = toothBoundingBox.y - 50;
-                int maxY = toothBoundingBox.y + toothBoundingBox.height + 50;
-
-                // 유효한 Bone 좌표 필터링
-                List<Point> validBonePoints = new ArrayList<>();
-                for (Point bonePoint : points) {
-                    if (toothBoundingBox.contains(bonePoint) &&
-                            bonePoint.y >= minY && bonePoint.y <= maxY) {
-                        validBonePoints.add(bonePoint);
+                    List<Point> filteredBonePoints = new ArrayList<>();
+                    for (Point bonePoint : points) {
+                        if (minXPoint != null && maxXPoint != null && bonePoint.x >= minXPoint.x && bonePoint.x <= maxXPoint.x) {
+                            filteredBonePoints.add(bonePoint);
+                        }
                     }
-                }
-                if (!validBonePoints.isEmpty()) {
-                    filteredBonePointsByTooth.put(toothNum, new ArrayList<>(validBonePoints));
-                }
 
-                if (validBonePoints.size() >= 2) {
-                    // Bone과 치아 폴리곤의 교차점 찾기
-                    List<Point> intersections = findIntersectionsBetweenBoneAndTooth(validBonePoints, filteredToothPoints);
-
-                    // 치아 폴리곤 그리기 - 흰색
-                    Imgproc.polylines(cejMappedOnlyMask, List.of(toothPts), true, new Scalar(255, 255, 255), 2);
-                    Imgproc.fillPoly(cejMappedOnlyMask, List.of(toothPts), new Scalar(255, 255, 255));
+                    if (!filteredBonePoints.isEmpty()) {
+                        filteredBonePointsByTooth.put(toothNum, filteredBonePoints);
+                        System.out.println("Tooth Number: " + toothNum + " - Filtered Bone Points:");
+                        for (Point p : filteredBonePoints) {
+                            System.out.println("    " + p);
+                        }
+                    }
 
                     // Bone 라인 그리기 - 녹색
                     MatOfPoint bonePts = new MatOfPoint();
-                    bonePts.fromList(validBonePoints);
+                    bonePts.fromList(filteredBonePoints);
                     Imgproc.polylines(cejMappedOnlyMask, List.of(bonePts), false, new Scalar(0, 255, 0), thickness);
-
-                    // 교차점을 boneIntersectionsByTooth Map에 저장
-                    boneIntersectionsByTooth.putIfAbsent(toothNum, new ArrayList<>());
-                    boneIntersectionsByTooth.get(toothNum).addAll(intersections);
-
-                    // 교차점을 mask에 표시
-                    List<Point> minMaxIntersections = getMinMaxXIntersections(intersections);
-                    for (Point intersection : minMaxIntersections) {
-                        Imgproc.circle(cejMappedOnlyMask, intersection, 5, new Scalar(0, 255, 0), -1);
-                    }
-                }
-            }
-        }
-
-        // 저장된 Bone 교차점 출력
-        for (Map.Entry<Integer, List<Point>> entry : boneIntersectionsByTooth.entrySet()) {
-            int toothNum = entry.getKey();
-            List<Point> toothIntersections = entry.getValue();
-
-            List<Point> minMaxIntersections = getMinMaxXIntersections(toothIntersections);
-
-            System.out.println("Tooth Number: " + toothNum);
-            if (!minMaxIntersections.isEmpty()) {
-                System.out.println("Min X Intersection: " + minMaxIntersections.get(0));
-                if (minMaxIntersections.size() > 1) {
-                    System.out.println("Max X Intersection: " + minMaxIntersections.get(1));
                 }
             }
         }
     }
+
 
 
 
