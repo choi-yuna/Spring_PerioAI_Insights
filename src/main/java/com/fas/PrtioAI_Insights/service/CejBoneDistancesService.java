@@ -535,22 +535,66 @@ public class CejBoneDistancesService {
         return intersectionsByTooth;
     }
 
-
-    // 바운딩 박스와 TLA 선 간 교점을 찾는 메서드
+    // 바운딩 박스와 TLA 선 간 교점을 찾는 메서드 (사각형의 윗변과 아랫변에서 발생하는 교점만 반환)
     private List<Point> findBoundingBoxIntersections(List<Point> shiftedTla, List<Point> boundingBox) {
         List<Point> intersections = new ArrayList<>();
-        for (int i = 0; i < shiftedTla.size() - 1; i++) {
-            Point p1 = shiftedTla.get(i);
-            Point p2 = shiftedTla.get(i + 1);
-            for (int j = 0; j < boundingBox.size(); j++) {
-                Point q1 = boundingBox.get(j);
-                Point q2 = boundingBox.get((j + 1) % boundingBox.size());
-                Point intersection = findExactIntersection(p1, p2, q1, q2);
-                if (intersection != null) {
-                    intersections.add(intersection);
-                }
+
+        // boundingBox의 네 점을 이용해 사각형의 네 변을 정의합니다.
+        Point p1 = boundingBox.get(0);
+        Point p2 = boundingBox.get(1);
+        Point p3 = boundingBox.get(2);
+        Point p4 = boundingBox.get(3);
+
+        // 사각형의 네 변을 정의
+        Point[][] edges = {
+                {p1, p2}, // 첫 번째 변
+                {p2, p3}, // 두 번째 변
+                {p3, p4}, // 세 번째 변
+                {p4, p1}  // 네 번째 변
+        };
+
+        // 네 변 중 가장 위쪽에 있는 변과 가장 아래쪽에 있는 변을 찾기 위해 각 변의 중심 y좌표를 구합니다.
+        double[] edgeCenterY = {
+                (p1.y + p2.y) / 2,
+                (p2.y + p3.y) / 2,
+                (p3.y + p4.y) / 2,
+                (p4.y + p1.y) / 2
+        };
+
+        // 가장 위쪽에 있는 변과 가장 아래쪽에 있는 변을 찾습니다.
+        int topEdgeIndex = 0;
+        int bottomEdgeIndex = 0;
+        for (int i = 1; i < edgeCenterY.length; i++) {
+            if (edgeCenterY[i] < edgeCenterY[topEdgeIndex]) {
+                topEdgeIndex = i;
+            }
+            if (edgeCenterY[i] > edgeCenterY[bottomEdgeIndex]) {
+                bottomEdgeIndex = i;
             }
         }
+
+        // 윗변과 아랫변 선택
+        Point[] topEdge = edges[topEdgeIndex];
+        Point[] bottomEdge = edges[bottomEdgeIndex];
+
+        // shiftedTla 선분의 각 점들에 대해 윗변과 아랫변과의 교점만 검사
+        for (int i = 0; i < shiftedTla.size() - 1; i++) {
+            Point tlaPoint1 = shiftedTla.get(i);
+            Point tlaPoint2 = shiftedTla.get(i + 1);
+
+            // 윗변과의 교점 찾기
+            Point topIntersection = findExactIntersection(tlaPoint1, tlaPoint2, topEdge[0], topEdge[1]);
+            if (topIntersection != null) {
+                intersections.add(topIntersection);
+            }
+
+            // 아랫변과의 교점 찾기
+            Point bottomIntersection = findExactIntersection(tlaPoint1, tlaPoint2, bottomEdge[0], bottomEdge[1]);
+            if (bottomIntersection != null) {
+                intersections.add(bottomIntersection);
+            }
+        }
+
         return intersections;
     }
 
