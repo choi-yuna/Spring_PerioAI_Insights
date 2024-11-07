@@ -11,6 +11,8 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import static java.lang.Math.pow;
+import static java.lang.Math.sqrt;
 
 @Service
 public class CejBoneDistancesService {
@@ -26,6 +28,8 @@ public class CejBoneDistancesService {
     private List<Scalar> tlaColor;
     private List<Integer> tlaSize;
     private List<List<Point>> bonePoints;
+    // toothDistanceService:- 각 박스에서부터 거리
+    private ToothDistanceService toothDistanceService;
 
     // 교점 저장
     private Map<Integer, Map<String, Point>> intersectionsByTooth;
@@ -71,7 +75,36 @@ public class CejBoneDistancesService {
 
     public CejBoneDistancesService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+        this.toothDistanceService = new ToothDistanceService(); // 인스턴스 생성
     }
+
+    // 필요한 메서드에서 toothDistanceService를 사용하여 거리 계산 호출
+    public void calculateToothDistances() {
+        toothDistanceService.calculateDistances(intersectionsByTooth, boxIntersections);
+
+        Map<Integer, Map<String, Double>> distances = toothDistanceService.getDistancesByTooth();
+        printFormattedDistances(distances);  // 포맷된 거리 정보 출력
+    }
+
+    public static void printFormattedDistances(Map<Integer, Map<String, Double>> distances) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Tooth Distances:\n");
+
+        for (Map.Entry<Integer, Map<String, Double>> entry : distances.entrySet()) {
+            Integer toothNum = entry.getKey();
+            Map<String, Double> distanceData = entry.getValue();
+
+            sb.append("Tooth Number: ").append(toothNum).append("\n");
+            for (Map.Entry<String, Double> distanceEntry : distanceData.entrySet()) {
+                sb.append("    ").append(distanceEntry.getKey()).append(": ")
+                        .append(distanceEntry.getValue()).append("\n");
+            }
+            sb.append("\n");  // 각 치아 번호 간 간격 추가
+        }
+
+        System.out.println(sb.toString());
+    }
+
 
     private void initialize() {
         teethNum = new ArrayList<>();
@@ -219,10 +252,16 @@ public class CejBoneDistancesService {
 
         saveMasks();
 
-        //TODO:- 테스트용 (cej, bone 좌표값 출력확인)
-        //printFilteredPoints();
-        // 거리값 출력
-        printDistancesBetweenMinMaxXCoordinates();
+        // 필요 시 거리 계산 수행
+        toothDistanceService.calculateDistances(intersectionsByTooth, boxIntersections);
+
+        // ToothDistanceService 인스턴스를 통해 계산된 거리 데이터 접근
+        Map<Integer, Map<String, Double>> distances = this.toothDistanceService.getDistancesByTooth();
+
+
+        // 보기 좋게 포맷하여 출력
+        printFormattedDistances(distances);
+
 
         return getAnalysisData();
     }
@@ -1221,30 +1260,66 @@ public class CejBoneDistancesService {
             }
         }
     }
-    //TODO:- 테스트용 (추후 삭제)
-    public void printFilteredPoints() {
-        // Print teethCejPoints
-        System.out.println("Filtered CEJ Points (teethCejPoints):");
-        for (Map.Entry<Integer, List<Point>> entry : filteredCejPointsByTooth.entrySet()) {
-            int toothNum = entry.getKey();
-            List<Point> points = entry.getValue();
-            System.out.println("Tooth Number: " + toothNum);
-            for (Point point : points) {
-                System.out.println("    " + point);
+
+
+
+
+
+    public class ToothDistanceService {
+
+        // 각 치아별 4가지 거리 정보를 저장할 전역 맵
+        private Map<Integer, Map<String, Double>> distancesByTooth = new HashMap<>();
+
+        // 상악 치아 범위
+        private final Set<Integer> MAXILLARY_TEETH = new HashSet<>(Arrays.asList(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28));
+
+        // 거리 계산 함수
+        public void calculateDistances(Map<Integer, Map<String, Point>> intersectionsByTooth, Map<Integer, Map<String, List<Point>>> boxIntersections) {
+            for (Map.Entry<Integer, Map<String, Point>> entry : intersectionsByTooth.entrySet()) {
+                int toothNum = entry.getKey();
+                Map<String, Point> toothIntersections = entry.getValue();
+                Map<String, List<Point>> toothBoxIntersections = boxIntersections.get(toothNum);
+
+                // 상악과 하악을 구분하여 박스 교점 기준 설정
+                String keyForBoxIntersections = MAXILLARY_TEETH.contains(toothNum) ? "박스 하단 교점" : "박스 상단 교점";
+
+                // 교점 정보가 없으면 건너뜀
+                if (toothBoxIntersections == null || !toothBoxIntersections.containsKey(keyForBoxIntersections)) continue;
+
+                List<Point> boxPoints = toothBoxIntersections.get(keyForBoxIntersections);
+                if (boxPoints.size() < 2) continue; // 좌우 계산을 위해 최소 두 개의 박스 교점이 필요
+
+                // 치아의 왼쪽과 오른쪽 교점 및 박스 교점으로 거리 계산
+                double leftCejDistance = calculatePointDistance(boxPoints.get(0), toothIntersections.get("Last_CEJ_Intersection_Left"));
+                double leftBoneDistance = calculatePointDistance(boxPoints.get(0), toothIntersections.get("Last_Bone_Intersection_Left"));
+                double rightCejDistance = calculatePointDistance(boxPoints.get(1), toothIntersections.get("Last_CEJ_Intersection_Right"));
+                double rightBoneDistance = calculatePointDistance(boxPoints.get(1), toothIntersections.get("Last_Bone_Intersection_Right"));
+
+                // 전역 맵에 거리 값 저장
+                Map<String, Double> distances = new HashMap<>();
+                distances.put("leftCejDistance", leftCejDistance);
+                distances.put("leftBoneDistance", leftBoneDistance);
+                distances.put("rightCejDistance", rightCejDistance);
+                distances.put("rightBoneDistance", rightBoneDistance);
+                distancesByTooth.put(toothNum, distances);
             }
         }
 
-        // Print bonePointsByNum
-        System.out.println("\nFiltered Bone Points (bonePointsByNum):");
-        for (Map.Entry<Integer, List<Point>> entry : filteredBonePointsByTooth.entrySet()) {
-            int toothNum = entry.getKey();
-            List<Point> points = entry.getValue();
-            System.out.println("Tooth Number: " + toothNum);
-            for (Point point : points) {
-                System.out.println("    " + point);
-            }
+        // 두 점 간의 거리 계산 메서드
+        private double calculatePointDistance(Point p1, Point p2) {
+            if (p1 == null || p2 == null) return Double.MAX_VALUE; // 거리 계산 불가한 경우 무한대 리턴
+            return sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+        }
+
+        // 거리 데이터 조회 메서드 (테스트 및 확인용)
+        public Map<Integer, Map<String, Double>> getDistancesByTooth() {
+            return distancesByTooth;
         }
     }
+
+
+
+
 
 
     public Map<String, Object> getAnalysisData() {
