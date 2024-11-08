@@ -32,21 +32,25 @@ public class CejBoneDistancesController {
      */
     @PostMapping("/upload-ini-json")
     public ResponseEntity<?> uploadIniAndJsonFiles(@RequestParam("iniFile") MultipartFile iniFile,
-                                                   @RequestParam("jsonFile") MultipartFile jsonFile) {
+                                                   @RequestParam("jsonFile") MultipartFile jsonFile,
+                                                   @RequestParam("dcmFile") MultipartFile dcmFile) {
         try {
-            // 임시 디렉토리에 INI 파일과 JSON 파일 저장
+            // 임시 디렉토리에 INI 파일, JSON 파일, DICOM 파일 저장
             String tempDir = System.getProperty("java.io.tmpdir");
 
             // 고유 파일 이름 생성 (UUID + 원래 확장자)
             String iniFileName = UUID.randomUUID() + "_ini.ini";
             String jsonFileName = UUID.randomUUID() + "_json.json";
+            String dcmFileName = UUID.randomUUID() + "_dcm.dcm";
 
             Path iniFilePath = Paths.get(tempDir, iniFileName);
             Path jsonFilePath = Paths.get(tempDir, jsonFileName);
+            Path dcmFilePath = Paths.get(tempDir, dcmFileName);
 
             // 파일을 저장할 디렉토리가 있는지 확인하고 없으면 생성
             Files.createDirectories(iniFilePath.getParent());
             Files.createDirectories(jsonFilePath.getParent());
+            Files.createDirectories(dcmFilePath.getParent());
 
             // INI 파일 저장
             File iniTempFile = iniFilePath.toFile();
@@ -58,15 +62,32 @@ public class CejBoneDistancesController {
             jsonFile.transferTo(jsonTempFile);
             System.out.println("JSON file saved successfully to: " + jsonTempFile.getAbsolutePath());
 
+            // DICOM 파일 저장
+            File dcmTempFile = dcmFilePath.toFile();
+            dcmFile.transferTo(dcmTempFile);
+            System.out.println("DICOM file saved successfully to: " + dcmTempFile.getAbsolutePath());
+
             // INI 파일 파싱
             System.out.println("Parsing INI file: " + iniFilePath);
             cejBoneDistancesService.parseIniFile(iniFilePath.toString());
             System.out.println("INI file parsed successfully.");
 
-            // JSON 파일 경로를 통해 정상 치아 번호를 필터링하고 조정된 데이터를 생성
-            System.out.println("Calculating adjusted distances based on JSON file content...");
-            Map<Integer, Map<String, List<Double>>> adjustedData = cejBoneDistancesService.calculateDistances(jsonFilePath.toString());
-            System.out.println("Adjusted data generated successfully.");
+            Map<Integer, Map<String, List<Double>>> adjustedData = Map.of();
+            try {
+                // JSON 파일 경로를 통해 정상 치아 번호를 필터링하고 조정된 데이터를 생성
+                System.out.println("Calculating adjusted distances based on JSON file content...");
+                adjustedData = cejBoneDistancesService.calculateDistances(jsonFilePath.toString(), dcmFilePath.toString());
+                System.out.println("Adjusted data generated successfully.");
+            } catch (IOException e) {
+                System.err.println("IOException 발생: " + e.getMessage());
+                e.printStackTrace();
+            } catch (NullPointerException e) {
+                System.err.println("NullPointerException 발생: " + e.getMessage());
+                e.printStackTrace();
+            } catch (Exception e) {
+                System.err.println("예기치 않은 오류 발생: " + e.getMessage());
+                e.printStackTrace();
+            }
 
             return ResponseEntity.ok(adjustedData);
 
@@ -81,3 +102,4 @@ public class CejBoneDistancesController {
         }
     }
 }
+

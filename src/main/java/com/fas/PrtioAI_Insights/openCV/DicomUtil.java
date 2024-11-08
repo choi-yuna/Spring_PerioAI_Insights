@@ -8,7 +8,7 @@ import org.opencv.core.Point;
 import java.io.File;
 import java.io.IOException;
 
-public class Dicom {
+public class DicomUtil {
 
     // DICOM 파일에서 Pixel Spacing 값을 불러오는 메서드
     public static double[] getPixelSpacing(String dicomFilePath) throws IOException {
@@ -45,15 +45,20 @@ public class Dicom {
         }
     }
 
-    // 실제 물리적 거리를 구하는 메서드 (ratioX 및 ratioY 추가)
-    public static double calculatePhysicalDistance(Point startPixel, Point endPixel, double[] pixelSpacing, int dicomWidth, int dicomHeight, int imageWidth, int imageHeight) {
+    public static double calculatePhysicalDistance(Point startPixel, Point endPixel, double[] pixelSpacing, int dicomWidth, int dicomHeight, int imageWidth, int imageHeight, Point fallbackPoint) {
+        if (startPixel == null || (endPixel == null && fallbackPoint == null)) {
+            return Double.MAX_VALUE; // 거리 계산 불가한 경우 무한대 리턴
+        }
+
+        Point actualEndPixel = (endPixel != null) ? endPixel : fallbackPoint;
+
         // PictureBox와 DICOM 이미지 간의 비율 계산
         double ratioX = dicomWidth / (double) imageWidth;
         double ratioY = dicomHeight / (double) imageHeight;
 
         // 픽셀 거리 계산
-        double pixelLengthX = Math.abs(endPixel.x - startPixel.x);
-        double pixelLengthY = Math.abs(endPixel.y - startPixel.y);
+        double pixelLengthX = Math.abs(startPixel.x - actualEndPixel.x);
+        double pixelLengthY = Math.abs(startPixel.y - actualEndPixel.y);
 
         // 물리적 거리 계산
         double physicalLengthX = pixelLengthX * pixelSpacing[0] * ratioX;
@@ -76,16 +81,15 @@ public class Dicom {
             System.out.println("DICOM Width: " + dicomWidth + ", Height: " + dicomHeight);
 
             // 화면 이미지의 크기 설정 (PictureBox 크기 등)
-            int imageWidth = 800;   // PictureBox 너비 (픽셀)
-            int imageHeight = 600;  // PictureBox 높이 (픽셀)
+            int imageWidth = 3000;   // PictureBox 너비 (픽셀)
+            int imageHeight = 3000;  // PictureBox 높이 (픽셀)
 
             // 예제 좌표 설정
             Point start = new Point(100, 150);
             Point end = new Point(200, 250);
 
             // 실제 물리적 거리 계산
-            double physicalDistance = calculatePhysicalDistance(start, end, pixelSpacing, dicomWidth, dicomHeight, imageWidth, imageHeight);
-            System.out.println("픽셀 간 물리적 거리: " + physicalDistance + " mm");
+//            double physicalDistance = calculatePhysicalDistance(start, end, pixelSpacing, dicomWidth, dicomHeight, imageWidth, imageHeight);
         } catch (IOException e) {
             System.err.println("DICOM 파일을 읽는 중 오류가 발생했습니다: " + e.getMessage());
             e.printStackTrace();
