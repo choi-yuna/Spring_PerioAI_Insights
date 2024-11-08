@@ -1130,6 +1130,10 @@ public class CejBoneDistancesService {
                         }
                     }
 
+                    if (!filteredBonePoints.isEmpty()) {
+                        filteredBonePointsByTooth.put(toothNum, filteredBonePoints);
+                    }
+
                     // Bone 라인 그리기 - 녹색
                     MatOfPoint bonePts = new MatOfPoint();
                     bonePts.fromList(filteredBonePoints);
@@ -1259,6 +1263,8 @@ public class CejBoneDistancesService {
     public Map<Integer, Map<String, List<Double>>> calculateDistances(String jsonFilePath) {
         Set<Integer> healthyTeeth = filterTeethFromJson(jsonFilePath);
         Map<Integer, Map<String, List<Double>>> result = new HashMap<>();
+        Point previousCejPoint = null;
+        Point previousBonePoint = null;
 
         for (Map.Entry<Integer, Map<String, Point>> entry : intersectionsByTooth.entrySet()) {
             int toothNum = entry.getKey();
@@ -1272,8 +1278,6 @@ public class CejBoneDistancesService {
             if (toothBoxIntersections == null || !toothBoxIntersections.containsKey(keyForBoxIntersections)) continue;
 
             List<Point> boxPoints = toothBoxIntersections.get(keyForBoxIntersections);
-            Point previousCejPoint = null;
-            Point previousBonePoint = null;
 
             // 좌우 계산을 위해 최소 한 개의 박스 교점이 필요
             if (boxPoints.isEmpty()) continue;
