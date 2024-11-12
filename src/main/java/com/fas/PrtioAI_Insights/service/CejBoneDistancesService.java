@@ -64,19 +64,35 @@ public class CejBoneDistancesService {
 
     static {
         try {
-            String opencvDll = "/libs/opencv_java4100.dll";
-            InputStream in = CejBoneDistancesService.class.getResourceAsStream(opencvDll);
-            if (in == null) {
-                throw new RuntimeException("DLL 파일을 찾을 수 없습니다: " + opencvDll);
+            String osName = System.getProperty("os.name").toLowerCase();
+            String libraryPath;
+
+            if (osName.contains("win")) {
+                // Windows 시스템용 DLL 파일 경로 설정
+                libraryPath = "/libs/opencv_java4100.dll";
+            } else if (osName.contains("nix") || osName.contains("nux") || osName.contains("mac")) {
+                // Linux 또는 Unix 계열 시스템용 SO 파일 경로 설정
+                libraryPath = "/libs/libopencv_java4100.so";
+            } else {
+                throw new UnsupportedOperationException("지원되지 않는 운영체제입니다: " + osName);
             }
-            File tempDll = File.createTempFile("opencv_java4100", ".dll");
-            Files.copy(in, tempDll.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            System.load(tempDll.getAbsolutePath());
-            tempDll.deleteOnExit();
+
+            InputStream in = CejBoneDistancesService.class.getResourceAsStream(libraryPath);
+            if (in == null) {
+                throw new RuntimeException("라이브러리 파일을 찾을 수 없습니다: " + libraryPath);
+            }
+
+            File tempLibFile = File.createTempFile("opencv_java", osName.contains("win") ? ".dll" : ".so");
+            Files.copy(in, tempLibFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            System.load(tempLibFile.getAbsolutePath());
+            tempLibFile.deleteOnExit(); // 프로그램 종료 시 임시 파일 삭제
+
         } catch (IOException e) {
             throw new RuntimeException("OpenCV 라이브러리 로드 실패", e);
         }
     }
+
 
     public CejBoneDistancesService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -484,17 +500,6 @@ public class CejBoneDistancesService {
         return intersections;
     }
 
-
-    // 교점이 치아 번호별로 끝나는 시점인지 확인하는 함수
-    private boolean isEndOfIntersection(Point intersection, List<Point> intersections) {
-        if (intersections.isEmpty()) return true;
-
-        Point lastPoint = intersections.get(intersections.size() - 1);
-        return intersection.equals(lastPoint); // 마지막 교점이면 true 반환
-    }
-
-
-
     private Point findExactIntersection(Point p1, Point p2, Point q1, Point q2) {
         double a1 = p2.y - p1.y;
         double b1 = p1.x - p2.x;
@@ -545,15 +550,6 @@ public class CejBoneDistancesService {
     }
 
 
-    // TLA가 치아 경계를 벗어났는지 확인하는 메서드
-    private boolean isWithinToothBoundary(List<Point> tla, List<Point> toothBoundary) {
-        for (Point p : tla) {
-            if (Imgproc.pointPolygonTest(new MatOfPoint2f(toothBoundary.toArray(new Point[0])), p, false) < 0) {
-                return false;
-            }
-        }
-        return true;
-    }
 
     // 두 선분 간 교차점을 찾는 메서드
     private static Point getIntersection(Point p1, Point p2, Point q1, Point q2) {
@@ -865,68 +861,6 @@ public class CejBoneDistancesService {
         return healthyTeeth;
     }
 
-    public Map<Integer, Map<String, Object>> calculateAdjustedCejBoneDistances(String jsonFilePath) {
-        Set<Integer> healthyTeeth = filterTeethFromJson(jsonFilePath);
-        Map<Integer, Map<String, Object>> result = new HashMap<>();
-        Set<Integer> maxillaryTeeth = Set.of(11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28);
-
-        for (int toothNum = 11; toothNum <= 48; toothNum++) {
-            Map<String, Object> toothData = new HashMap<>();
-
-            // 정상 치아 번호라면 좌표 계산
-            if (healthyTeeth.contains(toothNum)) {
-                List<Point> cejList = filteredCejPointsByTooth.getOrDefault(toothNum, Collections.emptyList());
-                List<Map<String, Double>> adjustedCejPoints = new ArrayList<>();
-                List<Double> cejDistances = new ArrayList<>();
-
-                if (yReferenceByTooth.containsKey(toothNum)) {
-                    double yReference = yReferenceByTooth.get(toothNum);
-                    boolean isMaxillary = maxillaryTeeth.contains(toothNum);
-
-                    for (Point cejPoint : cejList) {
-                        double adjustedY = isMaxillary ? yReference - cejPoint.y : cejPoint.y - yReference;
-                        adjustedCejPoints.add(Map.of("x", cejPoint.x, "y", adjustedY));
-                        cejDistances.add(Math.abs(adjustedY));
-                    }
-                }
-
-                toothData.put("cejPoints", cejList);
-                toothData.put("adjustedCejPoints", adjustedCejPoints);
-                toothData.put("cejDistances", cejDistances);
-                List<Point> boneList = filteredBonePointsByTooth.getOrDefault(toothNum, Collections.emptyList());
-                List<Map<String, Double>> adjustedBonePoints = new ArrayList<>();
-                List<Double> boneDistances = new ArrayList<>();
-
-                if (yReferenceByTooth.containsKey(toothNum)) {
-                    double yReference = yReferenceByTooth.get(toothNum);
-                    boolean isMaxillary = maxillaryTeeth.contains(toothNum);
-
-                    for (Point bonePoint : boneList) {
-                        double adjustedY = isMaxillary ? yReference - bonePoint.y : bonePoint.y - yReference;
-                        adjustedBonePoints.add(Map.of("x", bonePoint.x, "y", adjustedY));
-                        boneDistances.add(Math.abs(adjustedY));
-                    }
-                }
-
-                toothData.put("bonePoints", boneList);
-                toothData.put("adjustedBonePoints", adjustedBonePoints);
-                toothData.put("boneDistances", boneDistances);
-
-            } else {
-                // 비정상 치아 번호는 값을 null로 설정
-                toothData.put("cejPoints", null);
-                toothData.put("adjustedCejPoints", null);
-                toothData.put("cejDistances", null);
-                toothData.put("bonePoints", null);
-                toothData.put("adjustedBonePoints", null);
-                toothData.put("boneDistances", null);
-            }
-
-            result.put(toothNum, toothData);
-        }
-
-        return result;
-    }
 
 
     private void drawAndMapCejMask() {
@@ -1094,33 +1028,6 @@ public class CejBoneDistancesService {
         }
         return intersections;
     }
-
-    // x값 최소, 최대에 해당하는 교차점 2개만 반환
-    private List<Point> getMinMaxXIntersections(List<Point> intersections) {
-        if (intersections.isEmpty()) return intersections;
-
-        Point minXPoint = intersections.get(0);
-        Point maxXPoint = intersections.get(0);
-
-        for (Point point : intersections) {
-            if (point.x < minXPoint.x) {
-                minXPoint = point;
-            } else if (point.x > maxXPoint.x) {
-                maxXPoint = point;
-            }
-        }
-
-        // 최소 x값과 최대 x값 교차점 반환
-        List<Point> result = new ArrayList<>();
-        result.add(minXPoint);
-        if (!minXPoint.equals(maxXPoint)) {
-            result.add(maxXPoint);
-        }
-        return result;
-    }
-
-
-
 
     private void drawTlaMask() {
         double maxAllowedDistance = 150.0; // 폴리곤과의 최대 허용 거리 설정
