@@ -8,14 +8,25 @@ import org.opencv.core.Point;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * DICOM 파일을 다루기 위한 유틸리티 클래스입니다. 이 클래스는 DICOM 파일에서 픽셀 간격, 이미지 크기 등의 정보를 가져오며,
+ * 주어진 좌표 간의 실제 물리적 거리를 계산하는 기능을 제공합니다.
+ */
 public class DicomUtil {
 
-    // DICOM 파일에서 Pixel Spacing 값을 불러오는 메서드
+    /**
+     * DICOM 파일에서 픽셀 간격 정보를 가져오는 메서드입니다.
+     *
+     * @param dicomFilePath DICOM 파일의 경로
+     * @return [X 방향 픽셀 간격, Y 방향 픽셀 간격]
+     * @throws IOException DICOM 파일을 읽는 중 오류가 발생한 경우
+     */
     public static double[] getPixelSpacing(String dicomFilePath) throws IOException {
         File dicomFile = new File(dicomFilePath);
         try (DicomInputStream din = new DicomInputStream(dicomFile)) {
             Attributes attributes = din.readDataset(-1, -1);
             String pixelSpacingStr = attributes.getString(Tag.PixelSpacing);
+
             if (pixelSpacingStr != null) {
                 String[] spacingParts = pixelSpacingStr.split("\\\\");
                 if (spacingParts.length == 1) {
@@ -34,7 +45,13 @@ public class DicomUtil {
         }
     }
 
-    // DICOM 파일에서 이미지 너비와 높이 값을 가져오는 메서드
+    /**
+     * DICOM 파일에서 이미지의 너비와 높이 정보를 가져오는 메서드입니다.
+     *
+     * @param dicomFilePath DICOM 파일의 경로
+     * @return [너비, 높이]
+     * @throws IOException DICOM 파일을 읽는 중 오류가 발생한 경우
+     */
     public static int[] getDicomDimensions(String dicomFilePath) throws IOException {
         File dicomFile = new File(dicomFilePath);
         try (DicomInputStream din = new DicomInputStream(dicomFile)) {
@@ -45,18 +62,33 @@ public class DicomUtil {
         }
     }
 
-    public static double calculatePhysicalDistance(Point startPixel, Point endPixel, double[] pixelSpacing, int dicomWidth, int dicomHeight, int imageWidth, int imageHeight, Point fallbackPoint) {
+    /**
+     * 주어진 좌표들 간의 물리적 거리를 계산하는 메서드입니다.
+     *
+     * @param startPixel 시작 픽셀 좌표
+     * @param endPixel 종료 픽셀 좌표 (없을 경우 fallbackPoint 사용)
+     * @param pixelSpacing [X 방향 픽셀 간격, Y 방향 픽셀 간격]
+     * @param dicomWidth DICOM 이미지의 너비
+     * @param dicomHeight DICOM 이미지의 높이
+     * @param imageWidth 화면 이미지의 너비
+     * @param imageHeight 화면 이미지의 높이
+     * @param fallbackPoint 종료 픽셀 좌표가 없을 때 대신 사용할 좌표
+     * @return 실제 물리적 거리
+     */
+    public static double calculatePhysicalDistance(Point startPixel, Point endPixel, double[] pixelSpacing,
+                                                   int dicomWidth, int dicomHeight, int imageWidth, int imageHeight,
+                                                   Point fallbackPoint) {
         if (startPixel == null || (endPixel == null && fallbackPoint == null)) {
             return Double.MAX_VALUE; // 거리 계산 불가한 경우 무한대 리턴
         }
 
         Point actualEndPixel = (endPixel != null) ? endPixel : fallbackPoint;
 
-        // PictureBox와 DICOM 이미지 간의 비율 계산
+        // DICOM 이미지와 화면 이미지 간의 비율 계산
         double ratioX = dicomWidth / (double) imageWidth;
         double ratioY = dicomHeight / (double) imageHeight;
 
-        // 픽셀 거리 계산
+        // 픽셀 간 거리 계산
         double pixelLengthX = Math.abs(startPixel.x - actualEndPixel.x);
         double pixelLengthY = Math.abs(startPixel.y - actualEndPixel.y);
 
@@ -64,35 +96,7 @@ public class DicomUtil {
         double physicalLengthX = pixelLengthX * pixelSpacing[0] * ratioX;
         double physicalLengthY = pixelLengthY * pixelSpacing[1] * ratioY;
 
-        // 총 물리적 거리 계산
+        // 최종 물리적 거리 계산
         return Math.sqrt(physicalLengthX * physicalLengthX + physicalLengthY * physicalLengthY);
     }
-
-    public static void main(String[] args) {
-        try {
-            String dicomFilePath = "C:/Users/fasol/OneDrive/바탕 화면/BRM 701~800/A_7_0776_01.dcm";
-            double[] pixelSpacing = getPixelSpacing(dicomFilePath);
-            System.out.println("Pixel Spacing: X = " + pixelSpacing[0] + ", Y = " + pixelSpacing[1]);
-
-            // DICOM 이미지의 크기를 DICOM 파일에서 직접 가져오기
-            int[] dicomDimensions = getDicomDimensions(dicomFilePath);
-            int dicomWidth = dicomDimensions[0];
-            int dicomHeight = dicomDimensions[1];
-            System.out.println("DICOM Width: " + dicomWidth + ", Height: " + dicomHeight);
-
-            // 화면 이미지의 크기 설정 (PictureBox 크기 등)
-            int imageWidth = 3000;   // PictureBox 너비 (픽셀)
-            int imageHeight = 3000;  // PictureBox 높이 (픽셀)
-
-            // 예제 좌표 설정
-            Point start = new Point(100, 150);
-            Point end = new Point(200, 250);
-
-            // 실제 물리적 거리 계산
-//            double physicalDistance = calculatePhysicalDistance(start, end, pixelSpacing, dicomWidth, dicomHeight, imageWidth, imageHeight);
-        } catch (IOException e) {
-            System.err.println("DICOM 파일을 읽는 중 오류가 발생했습니다: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-}
+ }
